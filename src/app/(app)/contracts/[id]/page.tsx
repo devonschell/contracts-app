@@ -33,6 +33,9 @@ export default function ContractDetail({ params }: { params: { id: string } }) {
 
   const [files, setFiles] = useState<File[]>([]);
   const [overrideOld, setOverrideOld] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [uploaded, setUploaded] = useState<{ url: string; originalName: string }[] | null>(null);
 
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -42,6 +45,34 @@ export default function ContractDetail({ params }: { params: { id: string } }) {
   const onInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const list = e.target.files ? Array.from(e.target.files) : [];
     setFiles((prev) => [...prev, ...list]);
+  };
+
+  const submitUpload = async () => {
+    try {
+      setUploading(true);
+      setResult(null);
+
+      const fd = new FormData();
+      files.forEach((f) => fd.append("files", f));
+      fd.append("contractId", data.id);
+      fd.append("override", String(overrideOld));
+
+      const res = await fetch("/api/upload", { method: "POST", body: fd });
+      const json = await res.json();
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json?.error || "Upload failed");
+      }
+
+      setResult(`Uploaded ${json.files.length} file(s).`);
+      setUploaded(json.files.map((f: any) => ({ url: f.url, originalName: f.originalName })));
+      // Optionally clear the queue:
+      // setFiles([]);
+    } catch (e: any) {
+      alert(e.message || "Upload failed");
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -62,7 +93,8 @@ export default function ContractDetail({ params }: { params: { id: string } }) {
       <div className="rounded-lg border bg-white p-4">
         <div className="mb-2 text-sm font-medium">AI Summary</div>
         <p className="text-sm text-gray-700">
-          Key obligations and renewal notice windows summarized here. (Stub — we’ll connect real AI extraction.)
+          Key obligations and renewal notice windows summarized here. (Stub —
+          we’ll connect real AI extraction.)
         </p>
       </div>
 
@@ -126,15 +158,30 @@ export default function ContractDetail({ params }: { params: { id: string } }) {
               ))}
             </ul>
             <button
-              className="mt-3 rounded-md bg-black px-3 py-2 text-white text-sm"
-              onClick={() =>
-                alert(
-                  `Pretend-upload ${files.length} file(s); override=${overrideOld}`
-                )
-              }
+              className="mt-3 rounded-md bg-black px-3 py-2 text-white text-sm disabled:opacity-60"
+              disabled={uploading || files.length === 0}
+              onClick={submitUpload}
             >
-              Submit
+              {uploading ? "Uploading..." : "Submit"}
             </button>
+            {result && (
+              <div className="mt-2 text-xs text-green-600">{result}</div>
+            )}
+            {uploaded && uploaded.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {uploaded.map((f, i) => (
+                  <a
+                    key={i}
+                    href={f.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block text-xs underline"
+                  >
+                    View: {f.originalName}
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

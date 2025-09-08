@@ -2,15 +2,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
-type Row = {
-  id: string;
-  counterparty: string;
-  contract: string;
-  status: string;
-  renewal: string;
-  alerts: number;
-};
-
+type Row = { id: string; counterparty: string; contract: string; status: string; renewal: string; alerts: number };
 const rows: Row[] = [
   { id: "1", counterparty: "Acme Co.",  contract: "MSA",        status: "Active", renewal: "2025-01-31", alerts: 2 },
   { id: "2", counterparty: "Globex",    contract: "SaaS Order", status: "Active", renewal: "2025-03-15", alerts: 1 },
@@ -22,9 +14,7 @@ export default function ContractsPage() {
   const filtered = useMemo(() => {
     const s = q.toLowerCase();
     return rows.filter(r =>
-      [r.counterparty, r.contract, r.status, r.renewal].some(v =>
-        v.toLowerCase().includes(s)
-      )
+      [r.counterparty, r.contract, r.status, r.renewal].some(v => v.toLowerCase().includes(s))
     );
   }, [q]);
 
@@ -36,19 +26,15 @@ export default function ContractsPage() {
         className="w-full rounded-md border px-3 py-2 text-sm"
         placeholder="Search contracts..."
         value={q}
-        onChange={(e) => setQ(e.target.value)}
+        onChange={e => setQ(e.target.value)}
       />
 
       <div className="rounded-lg border bg-white">
         <div className="grid grid-cols-5 gap-2 border-b p-3 text-xs font-medium text-gray-600">
-          <div>Counterparty</div>
-          <div>Contract</div>
-          <div>Status</div>
-          <div>Renewal</div>
-          <div>Alerts</div>
+          <div>Counterparty</div><div>Contract</div><div>Status</div><div>Renewal</div><div>Alerts</div>
         </div>
 
-        {filtered.map((r) => (
+        {filtered.map(r => (
           <Link
             key={r.id}
             href={`/contracts/${r.id}`}
@@ -62,9 +48,7 @@ export default function ContractsPage() {
           </Link>
         ))}
 
-        {filtered.length === 0 && (
-          <div className="p-4 text-sm text-gray-500">No results.</div>
-        )}
+        {filtered.length === 0 && <div className="p-4 text-sm text-gray-500">No results.</div>}
       </div>
     </div>
   );
