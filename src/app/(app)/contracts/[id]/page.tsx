@@ -165,7 +165,11 @@ export default async function ContractDetail(props: {
           )}
 
           {/* AI Summary dropdown */}
-          <AiPanel upload={c.currentUpload} />
+          <AiPanel
+            contractId={c.id}
+            aiSummary={c.currentUpload?.aiSummary ?? null}
+            currentName={c.currentUpload?.originalName ?? null}
+          />
 
           {/* Current file */}
           <div className="rounded-lg border border-slate-200 bg-white p-4">

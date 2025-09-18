@@ -2,22 +2,29 @@
 import { useState } from "react";
 import CollapsibleCard from "@/components/CollapsibleCard";
 
-export default function AiPanel({ contractId, aiSummary, currentName }: {
+export default function AiPanel({
+  contractId,
+  aiSummary,
+  currentName,
+}: {
   contractId: string;
   aiSummary?: string | null;
   currentName?: string | null;
 }) {
   const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
   async function run() {
     setBusy(true);
+    setMsg(null);
     try {
       const res = await fetch(`/api/contracts/${contractId}/ai/suggest`, { method: "POST" });
-      const json = await res.json();
-      if (!res.ok) alert(json?.error || "AI analyze failed");
-      else location.reload();
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "AI analyze failed");
+      setMsg("Analyzed. Reloading…");
+      location.reload();
     } catch (e: any) {
-      alert(e?.message || "AI analyze failed");
+      setMsg(e?.message || "AI analyze failed");
     } finally {
       setBusy(false);
     }
@@ -26,13 +33,17 @@ export default function AiPanel({ contractId, aiSummary, currentName }: {
   return (
     <CollapsibleCard title="AI Summary" defaultOpen={false}>
       {aiSummary ? (
-        <pre className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">{aiSummary}</pre>
+        <div className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+          {renderWithBold(aiSummary)}
+        </div>
       ) : (
         <div className="text-sm text-slate-600">
-          No AI summary saved for <span className="font-medium">{currentName || "current file"}</span>.<br />
-          Re-upload a text-based PDF/DOCX and ensure OPENAI_API_KEY is set, then click Analyze.
+          No AI summary saved for <span className="font-medium">{currentName || "current file"}</span>.
+          <br />
+          Click Analyze to generate one now.
         </div>
       )}
+
       <button
         onClick={run}
         disabled={busy}
@@ -41,6 +52,23 @@ export default function AiPanel({ contractId, aiSummary, currentName }: {
       >
         {busy ? "Analyzing…" : "Analyze current file"}
       </button>
+      {msg && <div className="mt-2 text-xs text-slate-500">{msg}</div>}
     </CollapsibleCard>
   );
+}
+
+/** Replace **bold** segments with <strong> while keeping everything else plain text. */
+function renderWithBold(text: string) {
+  const out: (string | JSX.Element)[] = [];
+  const re = /\*\*(.+?)\*\*/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    out.push(<strong key={out.length}>{m[1]}</strong>);
+    last = re.lastIndex;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
 }

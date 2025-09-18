@@ -9,46 +9,46 @@ import { summarizeContract, extractContractMeta } from "@/lib/ai";
 
 export const runtime = "nodejs";
 
-export async function POST(
-  _req: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
+export async function POST(_req: NextRequest, ctx: { params: { id: string } }) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
-  const { id } = await context.params;
+  const id = ctx.params?.id;
+  if (!id) return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
 
-  // Find contract + current upload for this user
-  const contract = await prisma.contract.findFirst({
+  // Load contract + current upload
+  const c = await prisma.contract.findFirst({
     where: { id, clerkUserId: userId, deletedAt: null },
-    include: { currentUpload: true },
+    include: { currentUpload: { select: { id: true, url: true, originalName: true } } },
   });
-  if (!contract) return NextResponse.json({ ok: false, error: "Contract not found" }, { status: 404 });
-  if (!contract.currentUpload?.url) {
+  if (!c) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
+  if (!c.currentUpload) {
     return NextResponse.json({ ok: false, error: "No current file to analyze" }, { status: 400 });
   }
 
-  // Read the file from /public
-  const absPath = path.join(process.cwd(), "public", contract.currentUpload.url.replace(/^\/+/, ""));
+  // Read file from /public/uploads/...
+  const rel = c.currentUpload.url.startsWith("/") ? c.currentUpload.url.slice(1) : c.currentUpload.url;
+  const abs = path.join(process.cwd(), "public", rel);
+
   let buffer: Buffer;
   try {
-    buffer = await fs.readFile(absPath);
+    buffer = await fs.readFile(abs);
   } catch {
-    return NextResponse.json({ ok: false, error: "Could not read file" }, { status: 500 });
+    return NextResponse.json({ ok: false, error: "File not found on disk" }, { status: 404 });
   }
 
-  // Pull raw text
-  const originalName = contract.currentUpload.originalName || "upload";
-  const text = await extractTextFromBuffer(buffer, originalName);
-  const textLen = text?.length ?? 0;
-  if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json({ ok: false, error: "OPENAI_API_KEY not set" }, { status: 400 });
-  }
-  if (!text || text.trim().length < 50) {
-    return NextResponse.json({ ok: false, error: "File has little/no extractable text" }, { status: 400, extractedChars: textLen });
+  // Extract TEXT (critical)
+  const text = await extractTextFromBuffer(buffer, c.currentUpload.originalName || path.basename(abs));
+  const textLen = text?.trim().length ?? 0;
+  console.log("[suggest] extracted chars:", textLen);
+  if (textLen < 20) {
+    return NextResponse.json(
+      { ok: false, error: "Could not extract text from PDF/DOCX (is it a scanned image?)" },
+      { status: 400 }
+    );
   }
 
-  // Identify "my company" to infer the counterparty
+  // Optional profile for counterparty disambiguation
   const profile = await prisma.companyProfile.findUnique({
     where: { clerkUserId: userId },
     select: { companyName: true },
@@ -56,116 +56,88 @@ export async function POST(
   const myCompanyName = profile?.companyName ?? null;
 
   // Run AI
-  let aiSummary: string | null = null;
+  let aiSummary = "";
   let meta: any = null;
   try {
     aiSummary = await summarizeContract(text);
-  } catch (e) {
-    console.warn("[ai/suggest] summarize failed:", (e as Error).message);
+    console.log("[suggest] summary chars:", aiSummary?.length ?? 0);
+  } catch (e: any) {
+    console.warn("[suggest] summarize failed:", e?.message);
   }
   try {
     meta = await extractContractMeta(text, { myCompanyName });
-  } catch (e) {
-    console.warn("[ai/suggest] extract meta failed:", (e as Error).message);
+    console.log(
+      "[suggest] meta keys:",
+      meta && typeof meta === "object" ? Object.keys(meta) : null
+    );
+  } catch (e: any) {
+    console.warn("[suggest] meta failed:", e?.message);
   }
 
-  // Save summary on the current upload
-  if (aiSummary) {
-    await prisma.upload.update({
-      where: { id: contract.currentUpload.id },
-      data: { aiSummary },
-    });
-  }
+  // Persist the summary on the CURRENT upload
+  await prisma.upload.update({
+    where: { id: c.currentUpload.id },
+    data: { aiSummary },
+  });
 
-  // Auto-fill contract fields
-  const data: Record<string, any> = {};
+  // Apply light autofill to the contract (same logic as /api/upload)
+  const patch: Record<string, any> = {};
   if (meta && typeof meta === "object") {
-    if (isStr(meta.contractTitle)) data.title = meta.contractTitle;
+    if (isStr(meta.contractTitle)) patch.title = meta.contractTitle;
 
     const provider = normalizeCo(meta.provider);
     const customer = normalizeCo(meta.customer);
     const mine = normalizeCo(myCompanyName);
     if (provider || customer) {
-      if (mine && provider && isSameCompany(provider, mine)) data.counterparty = meta.customer || null;
-      else if (mine && customer && isSameCompany(customer, mine)) data.counterparty = meta.provider || null;
-      else data.counterparty = meta.customer || meta.provider || null;
+      if (mine && provider && isSameCompany(provider, mine)) patch.counterparty = meta.customer || null;
+      else if (mine && customer && isSameCompany(customer, mine)) patch.counterparty = meta.provider || null;
+      else patch.counterparty = meta.customer || meta.provider || null;
     }
 
-    setISODateIfValid(data, "startDate", meta.startDateISO);
-    setISODateIfValid(data, "endDate", meta.endDateISO);
-    setISODateIfValid(data, "renewalDate", meta.renewalDateISO);
+    setISODateIfValid(patch, "startDate", meta.startDateISO);
+    setISODateIfValid(patch, "endDate", meta.endDateISO);
+    setISODateIfValid(patch, "renewalDate", meta.renewalDateISO);
 
-    if (isFiniteNum(meta.termLengthMonths)) data.termLengthMonths = Number(meta.termLengthMonths);
-    if (isFiniteNum(meta.renewalNoticeDays)) data.renewalNoticeDays = Number(meta.renewalNoticeDays);
-    if (typeof meta.autoRenew === "boolean") data.autoRenew = meta.autoRenew;
+    if (isFiniteNum(meta.termLengthMonths)) patch.termLengthMonths = Number(meta.termLengthMonths);
+    if (isFiniteNum(meta.renewalNoticeDays)) patch.renewalNoticeDays = Number(meta.renewalNoticeDays);
+    if (typeof meta.autoRenew === "boolean") patch.autoRenew = meta.autoRenew;
 
     let monthly = safeNum(meta.monthlyFee);
     let annual = safeNum(meta.annualFee);
     if (monthly == null && annual != null) monthly = annual / 12;
     if (annual == null && monthly != null) annual = monthly * 12;
-    if (monthly != null) data.monthlyFee = round2(monthly);
-    if (annual != null) data.annualFee = round2(annual);
-    if (isFiniteNum(meta.lateFeePct)) data.lateFeePct = Number(meta.lateFeePct);
+    if (monthly != null) patch.monthlyFee = round2(monthly);
+    if (annual != null) patch.annualFee = round2(annual);
+    if (isFiniteNum(meta.lateFeePct)) patch.lateFeePct = Number(meta.lateFeePct);
 
-    if (isStr(meta.billingCadence)) data.billingCadence = String(meta.billingCadence).toUpperCase();
-    if (isStr(meta.paymentCadence)) data.paymentCadence = String(meta.paymentCadence).toUpperCase();
+    if (isStr(meta.billingCadence)) patch.billingCadence = String(meta.billingCadence).toUpperCase();
+    if (isStr(meta.paymentCadence)) patch.paymentCadence = String(meta.paymentCadence).toUpperCase();
 
-    if (Array.isArray(meta.unusualClauses)) data.unusualClauses = meta.unusualClauses;
-    if (Array.isArray(meta.terminationRights)) data.terminationRights = meta.terminationRights;
+    if (Array.isArray(meta.unusualClauses)) patch.unusualClauses = meta.unusualClauses;
+    if (Array.isArray(meta.terminationRights)) patch.terminationRights = meta.terminationRights;
   }
 
-  // Small fallbacks from summary text
-  if (!data.title && aiSummary) {
-    const m = aiSummary.match(/Contract Title:\s*(.+)/i);
-    if (m) data.title = m[1].trim().replace(/[•\-–]+$/, "");
-  }
-  if (data.monthlyFee == null && aiSummary) {
-    const m = aiSummary.match(/Monthly Fee:\s*\$?([\d,]+(?:\.\d+)?)/i);
-    if (m) data.monthlyFee = round2(Number(m[1].replace(/,/g, "")));
+  if (Object.keys(patch).length) {
+    try { await prisma.contract.update({ where: { id: c.id }, data: patch }); } catch {}
   }
 
-  if (Object.keys(data).length) {
-    await prisma.contract.update({ where: { id: contract.id }, data });
-  }
-
-  return NextResponse.json({
-    ok: true,
-    extractedChars: textLen,
-    savedSummary: !!aiSummary,
-    savedFields: Object.keys(data),
-  });
+  return NextResponse.json({ ok: true, aiSummary, meta });
 }
 
-/* helpers */
+/* ---- tiny helpers ---- */
 function setISODateIfValid(obj: Record<string, any>, key: string, iso?: string | null) {
   if (!iso || typeof iso !== "string") return;
   const dt = new Date(iso.length === 10 ? iso + "T00:00:00Z" : iso);
   if (!isNaN(dt.getTime())) obj[key] = dt;
 }
-function isFiniteNum(v: any): v is number {
-  const n = Number(v);
-  return Number.isFinite(n);
-}
-function safeNum(v: any) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-function isStr(v: any): v is string {
-  return typeof v === "string" && v.trim().length > 0;
-}
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
+function isFiniteNum(v: any): v is number { const n = Number(v); return Number.isFinite(n); }
+function safeNum(v: any) { const n = Number(v); return Number.isFinite(n) ? n : null; }
+function isStr(v: any): v is string { return typeof v === "string" && v.trim().length > 0; }
+function round2(n: number) { return Math.round(n * 100) / 100; }
 function normalizeCo(v?: string | null) {
   if (!v) return "";
-  return v
-    .toLowerCase()
-    .replace(/[.,']/g, " ")
-    .replace(/\b(incorporated|inc|l\.l\.c|llc|corp|corporation|co|company|ltd|limited)\b/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return v.toLowerCase().replace(/[.,']/g, " ")
+    .replace(/\b(incorporated|inc|llc|l\.l\.c|corp|corporation|co|company|ltd|limited)\b/g, "")
+    .replace(/\s+/g, " ").trim();
 }
-function isSameCompany(a: string, b: string) {
-  if (!a || !b) return false;
-  return a === b || a.includes(b) || b.includes(a);
-}
+function isSameCompany(a: string, b: string) { if (!a || !b) return false; return a === b || a.includes(b) || b.includes(a); }

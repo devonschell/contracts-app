@@ -9,3 +9,6 @@ backups/
 .DS_Store
 
 public/brand/
+
+# clerk configuration (can include secrets)
+/.clerk/
