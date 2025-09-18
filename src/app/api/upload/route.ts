@@ -16,6 +16,15 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   try {
+    // --- (#3) Content-Type guard (ADD) ---
+    const ct = req.headers.get("content-type") || "";
+    if (!ct.includes("multipart/form-data")) {
+      return NextResponse.json(
+        { ok: false, error: "Expected multipart/form-data" },
+        { status: 415 }
+      );
+    }
+
     const form = await req.formData();
     const contractId = String(form.get("contractId") || "");
     if (!contractId) return NextResponse.json({ ok: false, error: "Missing contractId" }, { status: 400 });
@@ -38,7 +47,11 @@ export async function POST(req: NextRequest) {
 
     if (!(file instanceof File)) {
       console.error("[upload] No File in form. Keys:", Array.from(form.keys()));
-      return NextResponse.json({ ok: false, error: "No file provided (use field 'file')." }, { status: 400 });
+      // --- (#2) Message tweak (CHANGE) ---
+      return NextResponse.json(
+        { ok: false, error: "No file provided (use 'files' or 'file')." },
+        { status: 400 }
+      );
     }
     if (file.size > maxUploadSize) return NextResponse.json({ ok: false, error: "File too large" }, { status: 413 });
 
