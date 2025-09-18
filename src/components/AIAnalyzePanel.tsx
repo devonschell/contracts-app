@@ -1,19 +1,13 @@
-// src/app/(app)/contracts/[id]/AiPanel.tsx
+// src/components/AIAnalyzePanel.tsx
 "use client";
 
 import { useState } from "react";
-import CollapsibleCard from "@/components/CollapsibleCard";
+import CollapsibleCard from "@/components/ui/CollapsibleCard";
 
-type Props = {
-  contractId: string;
-  aiSummary: string | null;
-  currentName: string | null;
-};
-
-export default function AiPanel({ contractId, aiSummary, currentName }: Props) {
+export default function AIAnalyzePanel({ contractId }: { contractId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [summary, setSummary] = useState<string | null>(aiSummary ?? null);
+  const [summary, setSummary] = useState<string | null>(null);
   const [extracted, setExtracted] = useState<number | null>(null);
 
   async function runAnalyze() {
@@ -21,7 +15,7 @@ export default function AiPanel({ contractId, aiSummary, currentName }: Props) {
     setError(null);
     setExtracted(null);
     try {
-      const res = await fetch(`/api/contracts/${contractId}/ai/suggest`, { method: "POST" });
+      const res = await fetch(`/api/contracts/\${contractId}/ai/suggest`, { method: "POST" });
       const json = await res.json().catch(() => ({}));
       if (!json?.ok) {
         setError(json?.error || "Analyze failed");
@@ -38,12 +32,8 @@ export default function AiPanel({ contractId, aiSummary, currentName }: Props) {
   }
 
   return (
-    <CollapsibleCard title="AI Summary" defaultOpen={false}>
+    <CollapsibleCard title="AI Analysis" defaultOpen={false}>
       <div className="space-y-3">
-        <div className="text-sm text-slate-600">
-          File: <span className="font-medium">{currentName || "—"}</span>
-        </div>
-
         <div className="flex items-center gap-2">
           <button
             type="button"
