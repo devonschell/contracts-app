@@ -3,15 +3,23 @@
 import { useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-/**
- * Inline replace: opens Finder, POSTs to /api/upload (override=true),
- * refreshes the page. No navigation.
- */
 export default function UploadReplaceButton({ contractId }: { contractId: string }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
   const uid = useId();
+
+  const safeRefresh = () => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("r", String(Date.now())); // cache-buster
+      // Use router.replace instead of router.refresh to avoid the dev manifest bug
+      router.replace(url.pathname + (url.searchParams.toString() ? `?${url.searchParams}` : ""));
+    } catch {
+      // absolute fallback
+      window.location.assign(window.location.href);
+    }
+  };
 
   const onPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -19,22 +27,29 @@ export default function UploadReplaceButton({ contractId }: { contractId: string
     try {
       setBusy(true);
       const fd = new FormData();
-      fd.append("files", file);
+      fd.append("files", file);           // keep your existing field name
       fd.append("contractId", contractId);
       fd.append("override", "true");
-      const res = await fetch("/api/upload", { method: "POST", body: fd, credentials: "include" });
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
 
       let text = "";
-      try { text = await res.text(); } catch { /* ignore */ }
+      try { text = await res.text(); } catch {}
 
       let json: any = {};
-      try { json = text ? JSON.parse(text) : {}; } catch { /* keep raw text */ }
+      try { json = text ? JSON.parse(text) : {}; } catch {}
 
       if (!res.ok || !json?.ok) {
         const msg = json?.error || text || `Upload failed (${res.status})`;
         throw new Error(msg);
       }
-      router.refresh();
+
+      // ⬇️ replaced the old router.refresh() with a safer navigation
+      safeRefresh();
     } catch (err: any) {
       console.error("[ReplaceUploadButton] upload error:", err);
       alert(err?.message || "Upload failed");
