@@ -1,0 +1,71 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Contract {
+  id        String    @id @default(cuid())
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  clerkUserId  String
+  title        String?
+  counterparty String?
+  status       String  @default("ACTIVE") // ACTIVE | REVIEW | TERMINATED
+
+  startDate   DateTime?
+  endDate     DateTime?
+  renewalDate DateTime?
+  autoRenew   Boolean?
+
+  monthlyFee Float?
+  annualFee  Float?
+  lateFeePct Float?
+
+  renewalNoticeDays Int?
+  termLengthMonths  Int?
+
+  billingCadence String?
+  paymentCadence String?
+
+  // AI-extracted bullets (arrays saved as JSON)
+  unusualClauses    Json? // stores string[]
+  terminationRights Json? // stores string[]
+
+  currentUploadId String? @unique
+  currentUpload   Upload? @relation("CurrentUpload", fields: [currentUploadId], references: [id])
+
+  uploads Upload[] @relation("ContractUploads")
+}
+
+model Upload {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  contractId   String
+  clerkUserId  String
+  originalName String
+  url          String
+  bytes        Int
+  aiSummary    String?
+
+  contract   Contract  @relation("ContractUploads", fields: [contractId], references: [id], onDelete: Cascade)
+  currentFor Contract? @relation("CurrentUpload")
+}
+
+model CompanyProfile {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clerkUserId String  @unique
+  companyName String?
+  logoUrl     String?
+}

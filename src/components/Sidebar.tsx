@@ -1,34 +1,68 @@
+// src/components/Sidebar.tsx
 "use client";
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import AppLogo from "@/components/AppLogo";
 
-const nav = [
-  { href: "/dashboard", label: "Dashboard" },
+type Item = { href: string; label: string };
+
+const MAIN: Item[] = [
   { href: "/contracts", label: "Contracts" },
-  { href: "/upload", label: "Upload" },
-  { href: "/settings", label: "Settings" },
+  { href: "/upload",    label: "Upload" },
+  { href: "/settings",  label: "Settings" },
 ];
 
 export default function Sidebar() {
-  const path = usePathname();
+  const pathname = usePathname();
+
   return (
-    <aside className="w-56 shrink-0 border-r bg-white">
-      <div className="p-4 text-xl font-semibold">YourLogo</div>
-      <nav className="space-y-1 px-2 pb-4">
-        {nav.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`block rounded-md px-3 py-2 text-sm ${
-              path?.startsWith(item.href)
-                ? "bg-gray-100 font-medium"
-                : "hover:bg-gray-50"
-            }`}
-          >
-            {item.label}
-          </Link>
+    <aside className="sticky top-0 h-screen w-60 border-r bg-white">
+      {/* Brand */}
+      <div className="flex h-14 items-center px-4">
+        <Link
+          href="/contracts"
+          className="flex items-center gap-2 cursor-pointer"
+          aria-label="Go to home"
+        >
+          <AppLogo />
+        </Link>
+      </div>
+
+      {/* Nav */}
+      <nav className="mt-2 space-y-1 px-2">
+        {MAIN.map((it) => (
+          <NavLink key={it.href} href={it.href} active={isActive(pathname, it.href)}>
+            {it.label}
+          </NavLink>
         ))}
       </nav>
     </aside>
   );
+}
+
+function NavLink({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  const base =
+    "block rounded-md px-3 py-2 text-sm transition-colors cursor-pointer";
+  const activeCls = "bg-black text-white";
+  const idleCls = "text-slate-700 hover:bg-slate-100";
+  return (
+    <Link href={href} className={`${base} ${active ? activeCls : idleCls}`}>
+      {children}
+    </Link>
+  );
+}
+
+function isActive(pathname: string, href: string) {
+  if (href === "/") return pathname === "/";
+  // mark active for the section root or any sub-route
+  return pathname === href || pathname.startsWith(href + "/");
 }

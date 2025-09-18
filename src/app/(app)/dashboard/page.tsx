@@ -1,146 +1,149 @@
-"use client";
-import { useMemo, useState } from "react";
-import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  PieChart, Pie, Cell, Legend
-} from "recharts";
+// src/app/(app)/dashboard/page.tsx
+import prisma from "@/lib/prisma";
+import { auth } from "@clerk/nextjs/server";
+import Link from "next/link";
+import DashboardPie, { type PieDatum } from "@/components/DashboardPie";
+import DashboardAlerts, { type AlertItem } from "@/components/DashboardAlerts";
 
-type Alert = {
-  id: string;
-  title: string;
-  dueInDays: number;
-  type: "renewal" | "price" | "other";
+export const dynamic = "force-dynamic";
+
+// Urgent buckets we care about
+type Cat = "expired" | "7" | "30" | "90";
+
+const COLORS: Record<Cat, string> = {
+  expired: "#ef4444", // red
+  "7": "#f87171",     // light red
+  "30": "#f59e0b",    // amber
+  "90": "#10b981",    // green
 };
 
-const sampleAlerts: Alert[] = [
-  { id: "a1", title: "Acme MSA renewal",        dueInDays: 5,  type: "renewal" },
-  { id: "a2", title: "Globex price increase 4%", dueInDays: 28, type: "price"   },
-  { id: "a3", title: "Umbrella data addendum",   dueInDays: 45, type: "other"   },
-  { id: "a4", title: "Wayne SLA renegotiation",  dueInDays: 72, type: "renewal" },
-];
+function categoryFor(date: Date | null): Cat | null {
+  if (!date) return null;
+  const today = new Date();
+  const d0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const d1 = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const days = Math.round((+d1 - +d0) / 86400000);
 
-const rangeTabs = [
-  { key: "week", label: "This Week", max: 7 },
-  { key: "30",  label: "30d",        max: 30 },
-  { key: "60",  label: "60d",        max: 60 },
-  { key: "90",  label: "90d",        max: 90 },
-] as const;
+  if (days < 0) return "expired";
+  if (days <= 7) return "7";
+  if (days <= 30) return "30";
+  if (days <= 90) return "90";
+  return null; // >90d → not urgent
+}
 
-// urgency colors
-const URGENCY_COLORS = {
-  red:   "#ef4444", // due <= 7
-  amber: "#f59e0b", // 8..30
-  green: "#10b981", // 31..range.max
-} as const;
+export default async function DashboardPage() {
+  const { userId } = await auth();
+  if (!userId) return null;
 
-export default function DashboardPage() {
-  const [range, setRange] = useState<(typeof rangeTabs)[number]>(rangeTabs[0]);
+  const contracts = await prisma.contract.findMany({
+    where: { clerkUserId: userId, deletedAt: null }, // hide soft-deleted
+    orderBy: { renewalDate: "asc" },
+    include: { uploads: { orderBy: { createdAt: "desc" }, take: 1 } },
+  });
 
-  // Alerts inside selected window
-  const windowAlerts = useMemo(
-    () => sampleAlerts.filter(a => a.dueInDays <= range.max),
-    [range]
-  );
+  // Count urgent buckets for the pie + build alert items for the component
+  let expired = 0, due7 = 0, due30 = 0, due90 = 0;
 
-  // Line chart: cumulative count at each window
-  const chartData = [
-    { label: "This Week", count: sampleAlerts.filter(a => a.dueInDays <= 7).length },
-    { label: "30d",       count: sampleAlerts.filter(a => a.dueInDays <= 30).length },
-    { label: "60d",       count: sampleAlerts.filter(a => a.dueInDays <= 60).length },
-    { label: "90d",       count: sampleAlerts.filter(a => a.dueInDays <= 90).length },
-  ];
+  const alertItems: AlertItem[] = contracts
+    .map((c) => {
+      const cat = categoryFor(c.renewalDate ? new Date(c.renewalDate) : null);
+      if (cat === "expired") expired += 1;
+      else if (cat === "7") due7 += 1;
+      else if (cat === "30") due30 += 1;
+      else if (cat === "90") due90 += 1;
 
-  // Pie chart: urgency distribution within selected window
-  const urgencyBuckets = windowAlerts.reduce(
-    (acc, a) => {
-      if (a.dueInDays <= 7) acc.red++;
-      else if (a.dueInDays <= 30) acc.amber++;
-      else acc.green++;
-      return acc;
-    },
-    { red: 0, amber: 0, green: 0 }
-  );
-  const pieData = [
-    { name: "Due ≤ 7d", value: urgencyBuckets.red,   color: URGENCY_COLORS.red },
-    { name: "8–30d",    value: urgencyBuckets.amber, color: URGENCY_COLORS.amber },
-    { name: "31–90d",   value: urgencyBuckets.green, color: URGENCY_COLORS.green },
-  ];
+      if (!cat) return null;
+      return {
+        id: c.id,
+        title: c.title,
+        counterparty: c.counterparty,
+        renewalDate: c.renewalDate ?? null,
+        bucket: cat, // "expired" | "7" | "30" | "90"
+      } satisfies AlertItem;
+    })
+    .filter(Boolean) as AlertItem[];
 
-  // Table list, sorted soonest first within the window
-  const filtered = useMemo(
-    () => windowAlerts.slice().sort((a, b) => a.dueInDays - b.dueInDays),
-    [windowAlerts]
-  );
+  // Pie shows only urgent slices (non-zero)
+  const pieData: PieDatum[] = [
+    { name: "Expired", value: expired, color: COLORS.expired },
+    { name: "7 days",  value: due7,    color: COLORS["7"] },
+    { name: "30 days", value: due30,   color: COLORS["30"] },
+    { name: "90 days", value: due90,   color: COLORS["90"] },
+  ].filter((d) => d.value > 0);
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Dashboard</h1>
 
-      {/* Charts row */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Line: Coming up counts */}
-        <div className="rounded-lg border bg-white p-4 h-72">
-          <div className="mb-2 text-sm font-medium">Contracts Coming Up</div>
-          <ResponsiveContainer width="100%" height="90%">
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="label" />
-              <YAxis allowDecimals={false} />
-              <Tooltip />
-              <Line type="monotone" dataKey="count" />
-            </LineChart>
-          </ResponsiveContainer>
+      <div className="grid gap-4 md:grid-cols-3">
+        {/* Pie + legend */}
+        <div className="rounded-lg border bg-white p-4">
+          <div className="text-sm font-medium mb-2">Renewal Risk Mix</div>
+          <DashboardPie data={pieData} />
+          <div className="mt-2 grid grid-cols-2 gap-1 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: COLORS.expired }} />
+              <span>Expired</span>
+              <span className="ml-auto">{expired}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: COLORS["7"] }} />
+              <span>7 days</span>
+              <span className="ml-auto">{due7}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: COLORS["30"] }} />
+              <span>30 days</span>
+              <span className="ml-auto">{due30}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: COLORS["90"] }} />
+              <span>90 days</span>
+              <span className="ml-auto">{due90}</span>
+            </div>
+          </div>
         </div>
 
-        {/* Pie: Urgency breakdown (red/yellow/green) */}
-        <div className="rounded-lg border bg-white p-4 h-72">
-          <div className="mb-2 text-sm font-medium">Urgency Breakdown</div>
-          <ResponsiveContainer width="100%" height="90%">
-            <PieChart>
-              <Tooltip />
-              <Legend verticalAlign="bottom" height={24} />
-              <Pie data={pieData} dataKey="value" nameKey="name" outerRadius="80%">
-                {pieData.map((slice, i) => (
-                  <Cell key={i} fill={slice.color} />
-                ))}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
+        {/* Totals */}
+        <div className="rounded-lg border bg-white p-4">
+          <div className="text-sm font-medium mb-2">Totals</div>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-md border p-3">
+              <div className="text-gray-500">Contracts</div>
+              <div className="text-xl font-semibold">{contracts.length}</div>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="text-gray-500">30 days</div>
+              <div className="text-xl font-semibold">{expired + due7 + due30}</div>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="text-gray-500">60 days</div>
+              <div className="text-xl font-semibold">
+                {expired + due7 + due30 + Math.min(due90, Math.max(0, due90))}
+              </div>
+            </div>
+            <div className="rounded-md border p-3">
+              <div className="text-gray-500">90 days</div>
+              <div className="text-xl font-semibold">
+                {expired + due7 + due30 + due90}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick links */}
+        <div className="rounded-lg border bg-white p-4">
+          <div className="text-sm font-medium mb-2">Quick Links</div>
+          <ul className="text-sm space-y-2">
+            <li><Link href="/contracts" className="underline">View all contracts</Link></li>
+            <li><Link href="/upload" className="underline">Upload new contract</Link></li>
+            <li><Link href="/settings" className="underline">Notification settings</Link></li>
+          </ul>
         </div>
       </div>
 
-      {/* Alerts list with range tabs */}
-      <div className="rounded-lg border bg-white p-4">
-        <div className="flex gap-2 pb-3">
-          {rangeTabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setRange(t)}
-              className={`rounded-md border px-3 py-1 text-sm ${range.key === t.key ? "bg-gray-100" : ""}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        <ul className="space-y-2">
-          {filtered.map((a) => {
-            const color =
-              a.dueInDays <= 7 ? URGENCY_COLORS.red :
-              a.dueInDays <= 30 ? URGENCY_COLORS.amber :
-              URGENCY_COLORS.green;
-            return (
-              <li key={a.id} className="rounded-md border p-3 text-sm flex items-center justify-between">
-                <span>{a.title}</span>
-                <span className="text-xs" style={{ color }}>{a.dueInDays}d</span>
-              </li>
-            );
-          })}
-          {filtered.length === 0 && (
-            <li className="rounded-md border p-3 text-sm text-gray-500">No alerts in this window.</li>
-          )}
-        </ul>
-      </div>
+      {/* Alerts with interactive filters */}
+      <DashboardAlerts items={alertItems} colors={COLORS} defaultWindow="30" />
     </div>
   );
 }

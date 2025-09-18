@@ -120,3 +120,19 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* --- Clickability safeguards --- */
+
+/* Ensure page content can receive clicks above any stray low-z overlays */
+main {
+  position: relative;
+  z-index: 0;
+}
+
+/* Guarantee pointer cursor on interactive elements (in case a reset overrides it) */
+a,
+button,
+[role="button"],
+.cursor-pointer {
+  cursor: pointer;
+}

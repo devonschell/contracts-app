@@ -1,190 +1,288 @@
-"use client";
+// src/app/(app)/contracts/[id]/page.tsx
+import { auth } from "@clerk/nextjs/server";
+import prisma from "@/lib/prisma";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import ReplaceUploadButton from "@/components/ReplaceUploadButton";
+import ContractActions from "@/components/ContractActions";
+import InlineField from "@/components/InlineField";
+import CollapsibleCard from "@/components/CollapsibleCard";
+import AiPanel from "./AiPanel";
 
-type Row = {
-  id: string;
-  counterparty: string;
-  contract: string;
-  status: string;
-  renewal: string;
-  alerts: number;
-};
+export const dynamic = "force-dynamic";
 
-const rows: Row[] = [
-  { id: "1", counterparty: "Acme Co.",  contract: "MSA",        status: "Active", renewal: "2025-01-31", alerts: 2 },
-  { id: "2", counterparty: "Globex",    contract: "SaaS Order", status: "Active", renewal: "2025-03-15", alerts: 1 },
-  { id: "3", counterparty: "Umbrella",  contract: "DPA",        status: "Review", renewal: "2025-02-10", alerts: 0 },
-];
+export default async function ContractDetail(props: {
+  params: Promise<{ id: string }>;
+}) {
+  const { userId } = await auth();
+  if (!userId) return <div className="p-6">Please sign in.</div>;
 
-export default function ContractDetail({ params }: { params: { id: string } }) {
-  const data = useMemo(
-    () =>
-      rows.find((r) => r.id === params.id) ?? {
-        id: params.id,
-        counterparty: "Unknown",
-        contract: "",
-        status: "",
-        renewal: "",
-        alerts: 0,
-      },
-    [params.id]
-  );
+  const { id } = await props.params;
 
-  const [files, setFiles] = useState<File[]>([]);
-  const [overrideOld, setOverrideOld] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
-  const [uploaded, setUploaded] = useState<{ url: string; originalName: string }[] | null>(null);
+  const c = await prisma.contract.findFirst({
+    where: { id, clerkUserId: userId },
+    include: {
+      currentUpload: { select: { id: true, originalName: true, url: true, aiSummary: true } },
+      uploads: { orderBy: { createdAt: "desc" }, take: 50 },
+    },
+  });
+  if (!c) return <div className="p-6">Not found.</div>;
+  const isDeleted = !!c.deletedAt;
 
-  const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const list = Array.from(e.dataTransfer.files);
-    setFiles((prev) => [...prev, ...list]);
-  };
-  const onInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const list = e.target.files ? Array.from(e.target.files) : [];
-    setFiles((prev) => [...prev, ...list]);
-  };
+  // JSON -> arrays
+  const toStrArray = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+  const unusualClauses = toStrArray((c as any).unusualClauses);
+  const terminationRights = toStrArray((c as any).terminationRights);
 
-  const submitUpload = async () => {
-    try {
-      setUploading(true);
-      setResult(null);
-
-      const fd = new FormData();
-      files.forEach((f) => fd.append("files", f));
-      fd.append("contractId", data.id);
-      fd.append("override", String(overrideOld));
-
-      const res = await fetch("/api/upload", { method: "POST", body: fd });
-      const json = await res.json();
-
-      if (!res.ok || !json.ok) {
-        throw new Error(json?.error || "Upload failed");
-      }
-
-      setResult(`Uploaded ${json.files.length} file(s).`);
-      setUploaded(json.files.map((f: any) => ({ url: f.url, originalName: f.originalName })));
-      // Optionally clear the queue:
-      // setFiles([]);
-    } catch (e: any) {
-      alert(e.message || "Upload failed");
-    } finally {
-      setUploading(false);
-    }
-  };
+  const actionRequiredDate = (() => {
+    if (!c.renewalDate) return null;
+    const d = new Date(c.renewalDate);
+    const days =
+      typeof c.renewalNoticeDays === "number" && c.renewalNoticeDays > 0
+        ? c.renewalNoticeDays
+        : 30;
+    d.setDate(d.getDate() - days);
+    return d;
+  })();
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="p-6">
+      <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">{data.counterparty}</h1>
-          <p className="text-sm text-gray-600">
-            {data.contract} • Status: {data.status}
-          </p>
+          <div className="text-sm text-slate-500">Contract Intelligence</div>
+          <h1 className="mt-1 text-2xl font-semibold">
+            {c.title || c.currentUpload?.originalName || "Untitled Contract"}
+          </h1>
+          <div className="mt-1 flex items-center gap-3 text-sm text-slate-600">
+            <span>Counterparty: {c.counterparty || "Unknown"}</span>
+            <StatusPill status={c.status as "ACTIVE" | "REVIEW" | "TERMINATED"} />
+            {isDeleted && (
+              <span className="rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-amber-800">
+                Deleted
+              </span>
+            )}
+          </div>
         </div>
-        <Link href="/contracts" className="text-sm underline">
-          Back to list
+        <Link href="/contracts" className="rounded-md border px-3 py-2 text-sm hover:bg-slate-50">
+          ← Back to contracts
         </Link>
       </div>
 
-      {/* AI Summary (placeholder) */}
-      <div className="rounded-lg border bg-white p-4">
-        <div className="mb-2 text-sm font-medium">AI Summary</div>
-        <p className="text-sm text-gray-700">
-          Key obligations and renewal notice windows summarized here. (Stub —
-          we’ll connect real AI extraction.)
-        </p>
-      </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Main */}
+        <div className="space-y-6 lg:col-span-2">
+          {/* Details */}
+          <div className="rounded-lg border border-slate-200 bg-white">
+            <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">
+              Details
+            </div>
+            <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+              <Labeled label="Counterparty">
+                <InlineField type="text" contractId={c.id} field="counterparty" value={c.counterparty ?? ""} />
+              </Labeled>
 
-      {/* Key details */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-lg border bg-white p-4">
-          <div className="text-sm font-medium mb-1">Renewal</div>
-          <div className="text-sm">{data.renewal || "—"}</div>
-        </div>
-        <div className="rounded-lg border bg-white p-4">
-          <div className="text-sm font-medium mb-1">Alerts</div>
-          <div className="text-sm">{data.alerts}</div>
-        </div>
-        <div className="rounded-lg border bg-white p-4">
-          <div className="text-sm font-medium mb-1">Counterparty</div>
-          <div className="text-sm">{data.counterparty}</div>
-        </div>
-      </div>
+              <Labeled label="Status">
+                <InlineField
+                  type="select"
+                  contractId={c.id}
+                  field="status"
+                  value={c.status}
+                  options={[
+                    { label: "ACTIVE", value: "ACTIVE" },
+                    { label: "REVIEW", value: "REVIEW" },
+                    { label: "TERMINATED", value: "TERMINATED" },
+                  ]}
+                />
+              </Labeled>
 
-      {/* Upload New Year's Contract */}
-      <div className="rounded-lg border bg-white p-4 space-y-3">
-        <div className="text-sm font-medium">Upload New Year’s Contract</div>
-        <div
-          onDrop={onDrop}
-          onDragOver={(e) => e.preventDefault()}
-          className="rounded-md border-2 border-dashed p-6 text-center text-sm"
-        >
-          Drag & drop PDF/DOCX here or{" "}
-          <label className="underline cursor-pointer">
-            browse
-            <input
-              type="file"
-              multiple
-              accept=".pdf,.doc,.docx"
-              className="hidden"
-              onChange={onInput}
-            />
-          </label>
-        </div>
+              <Labeled label="Start date">
+                <InlineField type="date" contractId={c.id} field="startDate" value={c.startDate as any} />
+              </Labeled>
+              <Labeled label="End date">
+                <InlineField type="date" contractId={c.id} field="endDate" value={c.endDate as any} />
+              </Labeled>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={overrideOld}
-            onChange={(e) => setOverrideOld(e.target.checked)}
-          />
-          Override the old contract after upload
-        </label>
+              <Labeled label="Renewal date">
+                <InlineField type="date" contractId={c.id} field="renewalDate" value={c.renewalDate as any} />
+              </Labeled>
+              <Labeled label="Auto-renew">
+                <InlineField type="boolean" contractId={c.id} field="autoRenew" value={c.autoRenew ?? false} />
+              </Labeled>
 
-        {files.length > 0 && (
-          <div className="rounded-md border p-3">
-            <div className="text-sm font-medium mb-2">Selected files</div>
-            <ul className="text-sm space-y-1">
-              {files.map((f, i) => (
-                <li key={i} className="flex justify-between">
-                  <span className="truncate max-w-[70%]">{f.name}</span>
-                  <span className="text-xs text-gray-500">
-                    {Math.round(f.size / 1024)} KB
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <button
-              className="mt-3 rounded-md bg-black px-3 py-2 text-white text-sm disabled:opacity-60"
-              disabled={uploading || files.length === 0}
-              onClick={submitUpload}
-            >
-              {uploading ? "Uploading..." : "Submit"}
-            </button>
-            {result && (
-              <div className="mt-2 text-xs text-green-600">{result}</div>
-            )}
-            {uploaded && uploaded.length > 0 && (
-              <div className="mt-2 space-y-1">
-                {uploaded.map((f, i) => (
-                  <a
-                    key={i}
-                    href={f.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="block text-xs underline"
-                  >
-                    View: {f.originalName}
-                  </a>
-                ))}
-              </div>
-            )}
+              <Labeled label="Monthly fee">
+                <InlineField type="number" contractId={c.id} field="monthlyFee" value={c.monthlyFee as any} />
+              </Labeled>
+              <Labeled label="Annual fee">
+                <InlineField type="number" contractId={c.id} field="annualFee" value={c.annualFee as any} />
+              </Labeled>
+
+              <Labeled label="Late fee %">
+                <InlineField type="number" contractId={c.id} field="lateFeePct" value={c.lateFeePct as any} />
+              </Labeled>
+              <Labeled label="Notice days">
+                <InlineField type="number" contractId={c.id} field="renewalNoticeDays" value={c.renewalNoticeDays as any} />
+              </Labeled>
+
+              <Labeled label="Term (months)">
+                <InlineField type="number" contractId={c.id} field="termLengthMonths" value={c.termLengthMonths as any} />
+              </Labeled>
+              <Labeled label="Billing cadence">
+                <InlineField type="text" contractId={c.id} field="billingCadence" value={c.billingCadence ?? ""} />
+              </Labeled>
+              <Labeled label="Payment cadence">
+                <InlineField type="text" contractId={c.id} field="paymentCadence" value={c.paymentCadence ?? ""} />
+              </Labeled>
+            </div>
+
+            <div className="border-t border-slate-200 px-4 py-3 text-sm text-slate-700">
+              <span className="mr-2 font-medium">Action required by:</span>
+              {actionRequiredDate ? actionRequiredDate.toLocaleDateString() : "—"}
+              <span className="ml-2 text-slate-500">({c.renewalNoticeDays ?? 30}d before renewal)</span>
+            </div>
           </div>
-        )}
+
+          {/* Fees summary */}
+          {(c.monthlyFee != null || c.annualFee != null || c.paymentCadence) && (
+            <div className="rounded-lg border border-slate-200 bg-white">
+              <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">Fees</div>
+              <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-3">
+                <FeeItem label="Monthly" value={money(c.monthlyFee)} />
+                <FeeItem label="Annual" value={money(c.annualFee)} />
+                <FeeItem label="Payment cadence" value={c.paymentCadence || "—"} />
+              </div>
+            </div>
+          )}
+
+          {/* Clauses */}
+          {(unusualClauses.length > 0 || terminationRights.length > 0) && (
+            <div className="rounded-lg border border-slate-200 bg-white">
+              <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">Clauses</div>
+              <div className="grid grid-cols-1 gap-6 p-4 sm:grid-cols-2">
+                <ClauseList title="Unusual Clauses" items={unusualClauses} />
+                <ClauseList title="Termination Rights" items={terminationRights} />
+              </div>
+            </div>
+          )}
+
+          {/* AI Summary dropdown */}
+          <AiPanel upload={c.currentUpload} />
+
+          {/* Current file */}
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-medium text-slate-800">Current file</div>
+                <div className="text-sm text-slate-600">
+                  {c.currentUpload ? c.currentUpload.originalName : "No file yet"}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {c.currentUpload && (
+                  <a href={c.currentUpload.url} download className="rounded-md border px-3 py-2 text-sm hover:bg-slate-50">
+                    Download
+                  </a>
+                )}
+                {!isDeleted && <ReplaceUploadButton contractId={c.id} />}
+              </div>
+            </div>
+          </div>
+
+          {/* Upload history */}
+          <div className="rounded-lg border border-slate-200 bg-white">
+            <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">Upload history</div>
+            <div className="divide-y divide-slate-100">
+              {c.uploads.length === 0 ? (
+                <div className="px-4 py-4 text-sm text-slate-600">No uploads yet.</div>
+              ) : (
+                c.uploads.map((u) => (
+                  <div key={u.id} className="flex items-center justify-between px-4 py-3">
+                    <div>
+                      <div className="text-sm text-slate-900">{u.originalName}</div>
+                      <div className="text-xs text-slate-500">{fmtDateTime(u.createdAt)}</div>
+                    </div>
+                    <a href={u.url} download className="rounded-md border px-2 py-1 text-xs hover:bg-slate-50">
+                      Download
+                    </a>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Side actions */}
+        <aside className="space-y-4">
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="mb-2 text-sm font-semibold text-slate-800">Actions</div>
+            <ContractActions contractId={c.id} isDeleted={isDeleted} />
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm">
+            <div className="mb-1 font-semibold text-slate-800">Renewal status</div>
+            {renderRenewalBadge(c.renewalDate, c.renewalNoticeDays ?? undefined)}
+          </div>
+        </aside>
       </div>
+    </div>
+  );
+}
+
+/* ---- helpers ---- */
+function StatusPill({ status }: { status: "ACTIVE" | "REVIEW" | "TERMINATED" }) {
+  const cls =
+    status === "ACTIVE"
+      ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+      : status === "REVIEW"
+      ? "bg-amber-50 text-amber-800 border-amber-200"
+      : "bg-slate-100 text-slate-700 border-slate-300";
+  return <span className={`rounded-full border px-2 py-0.5 text-xs ${cls}`}>{status}</span>;
+}
+function fmtDateTime(d: Date | string) {
+  const dt = typeof d === "string" ? new Date(d) : d;
+  return isNaN(dt.getTime()) ? "" : dt.toLocaleString();
+}
+function renderRenewalBadge(date: Date | string | null, noticeDays?: number) {
+  if (!date) return <span className="text-slate-500">No renewal date set.</span>;
+  const dt = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(dt.getTime())) return <span className="text-slate-500">Invalid date.</span>;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((dt.getTime() - today.getTime()) / 86400000);
+  const windowDays = noticeDays && noticeDays > 0 ? noticeDays : 30;
+  if (diffDays < 0) return <span className="text-red-700">Overdue • {dt.toLocaleDateString()}</span>;
+  if (diffDays <= windowDays) return <span className="text-amber-700">Due in {diffDays}d • {dt.toLocaleDateString()}</span>;
+  return <span className="text-slate-700">{dt.toLocaleDateString()}</span>;
+}
+function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="mt-1">{children}</div>
+    </div>
+  );
+}
+function FeeItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="mt-1 text-sm text-slate-900">{value || "—"}</div>
+    </div>
+  );
+}
+function money(v?: number | null) {
+  if (v == null || isNaN(Number(v))) return "—";
+  return `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+}
+function ClauseList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div>
+      <div className="text-xs uppercase tracking-wide text-slate-500">{title}</div>
+      {items.length === 0 ? (
+        <div className="mt-1 text-sm text-slate-500">—</div>
+      ) : (
+        <ul className="mt-2 list-disc pl-5 text-sm text-slate-800 space-y-1">
+          {items.map((s, i) => (<li key={i}>{s}</li>))}
+        </ul>
+      )}
     </div>
   );
 }

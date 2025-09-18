@@ -1,9 +1,18 @@
+// src/app/page.tsx
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 
-export default function Landing() {
+export default async function Home() {
+  const { userId } = await auth();
+  if (userId) {
+    // If already signed in, go straight to the app
+    redirect("/dashboard");
+  }
+
+  // Public landing page for signed-out visitors
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
       <header className="border-b">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
           <div className="font-semibold">YourLogo</div>
@@ -19,14 +28,12 @@ export default function Landing() {
         </div>
       </header>
 
-      {/* Hero */}
       <main className="mx-auto max-w-6xl px-4 py-16">
         <h1 className="text-4xl font-bold">
           See contract risks before they cost you.
         </h1>
         <p className="mt-3 text-gray-600 max-w-xl">
-          Upload contracts, track renewals, and catch price increases
-          automatically.
+          Upload contracts, track renewals, and catch price increases automatically.
         </p>
         <div className="mt-6">
           <Link
@@ -36,24 +43,7 @@ export default function Landing() {
             Start Free Trial
           </Link>
         </div>
-
-        {/* Screenshot / teaser block */}
-        <div className="mt-12 rounded-lg border p-8">
-          [Dashboard screenshot placeholder]
-        </div>
-
-        {/* Feature cards */}
-        <div className="mt-12 grid gap-6 md:grid-cols-3">
-          <div className="rounded-lg border p-6">Auto Extraction</div>
-          <div className="rounded-lg border p-6">Change Detection</div>
-          <div className="rounded-lg border p-6">Renewal Alerts</div>
-        </div>
       </main>
-
-      {/* Footer */}
-      <footer className="mt-16 border-t py-6 text-center text-sm text-gray-500">
-        © YourCompany
-      </footer>
     </div>
   );
 }

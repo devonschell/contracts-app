@@ -1,6 +1,9 @@
-# Node / Next
 node_modules/
 .next/
-dist/
-out/
-.env*
+.env
+.env.local
+.prisma/
+public/uploads/
+prisma/dev.db
+backups/
+.DS_Store
