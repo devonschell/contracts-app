@@ -6,7 +6,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const pexecFile = promisify(execFile);
 
-export type ExtractOpts = { allowOCR?: boolean; ocrPages?: number; ocrDPI?: number; };
+export type ExtractOpts = { allowOCR?: boolean; ocrPages?: number; ocrDPI?: number };
 
 export async function extractTextFromBuffer(
   buffer: Buffer,
@@ -41,17 +41,17 @@ export async function extractTextFromBuffer(
       if (t.length > 40) return t;
     } catch {}
 
-    // 3) OCR fallback
+    // 3) OCR fallback via system CLI (Poppler + Tesseract)
     if (opts.allowOCR) {
       try {
-        const t = await ocrPdf(buffer, {
+        const t = await ocrPdfCLI(buffer, {
           pages: Math.max(1, Math.min(opts.ocrPages ?? 3, 10)),
           dpi: opts.ocrDPI ?? 200,
         });
         const cleaned = tidy(t);
         if (cleaned.length > 20) return cleaned;
       } catch (e: any) {
-        console.warn("[extractText][OCR] failed:", e?.message || e);
+        console.warn("[extractText][OCR-CLI] failed:", e?.message || e);
       }
     }
     return "";
@@ -71,32 +71,37 @@ export async function extractTextFromBuffer(
   return looksTextual(guess) ? tidy(guess) : "";
 }
 
-/* ---------- OCR helpers ---------- */
-async function ocrPdf(buffer: Buffer, opts: { pages: number; dpi: number }) {
+/* ---------- OCR helpers (CLI) ---------- */
+async function ocrPdfCLI(buffer: Buffer, opts: { pages: number; dpi: number }) {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ocr-"));
   const pdfPath = path.join(tmpDir, "in.pdf");
   await fs.writeFile(pdfPath, buffer);
-  const prefix = path.join(tmpDir, "out");
+  const prefix = path.join(tmpDir, "page");
   const PATH = `${process.env.PATH || ""}:/opt/homebrew/bin:/usr/local/bin`;
 
+  // PDF -> PNGs
   await pexecFile(
     "pdftoppm",
     ["-png", "-r", String(opts.dpi), "-f", "1", "-l", String(opts.pages), pdfPath, prefix],
     { env: { ...process.env, PATH } }
   );
 
-  const Tesseract = (await import("tesseract.js")).default;
+  // OCR each page to stdout
   let text = "";
   for (let p = 1; p <= opts.pages; p++) {
     const imgPath = `${prefix}-${p}.png`;
     try {
-      const img = await fs.readFile(imgPath);
-      const result = await Tesseract.recognize(img, "eng");
-      text += (result?.data?.text || "") + "\n";
+      const { stdout } = await pexecFile(
+        "tesseract",
+        [imgPath, "-", "-l", "eng", "--psm", "6"],
+        { env: { ...process.env, PATH }, maxBuffer: 50 * 1024 * 1024 }
+      );
+      text += stdout + "\n";
     } catch {
       break;
     }
   }
+
   try { await fs.rm(tmpDir, { recursive: true, force: true }); } catch {}
   return text;
 }

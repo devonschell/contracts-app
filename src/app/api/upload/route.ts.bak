@@ -1,3 +1,4 @@
+// src/app/api/upload/route.ts
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
@@ -8,17 +9,27 @@ import { summarizeContract, extractContractMeta } from "@/lib/ai";
 import { extractTextFromBuffer } from "@/lib/extractText";
 
 export const runtime = "nodejs";
-export const maxUploadSize = 50 * 1024 * 1024;
+export const maxUploadSize = 50 * 1024 * 1024; // 50 MB
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   try {
+    // --- (#3) Content-Type guard (ADD) ---
+    const ct = req.headers.get("content-type") || "";
+    if (!ct.includes("multipart/form-data")) {
+      return NextResponse.json(
+        { ok: false, error: "Expected multipart/form-data" },
+        { status: 415 }
+      );
+    }
+
     const form = await req.formData();
     const contractId = String(form.get("contractId") || "");
     if (!contractId) return NextResponse.json({ ok: false, error: "Missing contractId" }, { status: 400 });
 
+    // Contract ownership
     const contract = await prisma.contract.findFirst({
       where: { id: contractId, clerkUserId: userId, deletedAt: null },
       select: { id: true, currentUploadId: true },
@@ -27,6 +38,7 @@ export async function POST(req: NextRequest) {
 
     const override = String(form.get("override") || "") === "true";
 
+    // accept file | files | upload
     const file =
       (form.get("file") as File | null) ||
       (form.get("files") as File | null) ||
@@ -35,7 +47,11 @@ export async function POST(req: NextRequest) {
 
     if (!(file instanceof File)) {
       console.error("[upload] No File in form. Keys:", Array.from(form.keys()));
-      return NextResponse.json({ ok: false, error: "No file provided (use field 'file')." }, { status: 400 });
+      // --- (#2) Message tweak (CHANGE) ---
+      return NextResponse.json(
+        { ok: false, error: "No file provided (use 'files' or 'file')." },
+        { status: 400 }
+      );
     }
     if (file.size > maxUploadSize) return NextResponse.json({ ok: false, error: "File too large" }, { status: 413 });
 
@@ -51,25 +67,28 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     await fs.writeFile(path.join(absDir, filename), buffer);
 
-    // Extract text (with OCR fallback)
+    // ---- Extract text from the uploaded buffer
     let text = "";
     try {
-      text = await extractTextFromBuffer(buffer, originalName, { allowOCR: true, ocrPages: 5, ocrDPI: 300 });
+      text = await extractTextFromBuffer(buffer, originalName);
     } catch (e: any) {
       console.warn("[upload] extractTextFromBuffer threw:", e?.message);
     }
     const textLen = text?.trim()?.length ?? 0;
     console.log("[upload] extracted chars:", textLen);
 
+    // myCompanyName (for counterparty disambiguation)
     const profile = await prisma.companyProfile.findUnique({
       where: { clerkUserId: userId },
       select: { companyName: true },
     });
     const myCompanyName = profile?.companyName ?? null;
 
+    // ---- AI guardrails
     const aiReasons: string[] = [];
-    if (!process.env.OPENAI_API_KEY) aiReasons.push("no_openai_key");
-    if (textLen < 10) aiReasons.push("no_or_too_little_text");
+    const keyLen = process.env.OPENAI_API_KEY?.length || 0;
+    if (!keyLen) aiReasons.push("no_openai_key");
+    if (textLen < 10) aiReasons.push("no_or_too_little_text"); // scanned/empty PDFs often hit this
     const canUseAI = aiReasons.length === 0;
 
     let aiSummary: string | null = null;
@@ -94,6 +113,7 @@ export async function POST(req: NextRequest) {
       console.warn("[upload] Skipping AI. reasons:", aiReasons);
     }
 
+    // ---- Save Upload
     const createdUpload = await prisma.upload.create({
       data: {
         contractId: contract.id,
@@ -106,6 +126,7 @@ export async function POST(req: NextRequest) {
       select: { id: true },
     });
 
+    // Mark as current if replacing or first upload
     if (override || !contract.currentUploadId) {
       await prisma.contract.update({
         where: { id: contract.id },
@@ -113,6 +134,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // ---- Autofill contract fields from AI
     const patch: Record<string, any> = {};
     if (meta && typeof meta === "object") {
       if (isStr(meta.contractTitle)) patch.title = meta.contractTitle;
@@ -149,6 +171,7 @@ export async function POST(req: NextRequest) {
       if (Array.isArray(meta.terminationRights)) patch.terminationRights = meta.terminationRights;
     }
 
+    // tiny fallbacks from summary text
     if (!patch.title && aiSummary) {
       const m = aiSummary.match(/Contract Title:\s*(.+)/i);
       if (m) patch.title = m[1].trim().replace(/[•\-–]+$/, "");
@@ -178,7 +201,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/* helpers */
+/* ---------- helpers ---------- */
 function safeExt(name: string) {
   const m = name.toLowerCase().match(/\.(pdf|docx?|txt)$/i);
   return m ? `.${m[1]}` : "";
