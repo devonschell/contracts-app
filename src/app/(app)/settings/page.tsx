@@ -1,50 +1,30 @@
-"use client";
-import { useEffect, useState } from "react";
+import { auth } from "@clerk/nextjs/server";
+import prisma from "@/lib/prisma";
+import CompanyNameForm from "./CompanyNameForm";
 
-export default function SettingsPage() {
-  const [company, setCompany] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+export const dynamic = "force-dynamic";
 
-  useEffect(() => {
-    fetch("/api/settings/company").then(r => r.json()).then(j => {
-      if (j?.ok) setCompany(j.companyName || "");
-    }).catch(()=>{});
-  }, []);
+export default async function SettingsPage() {
+  const { userId } = await auth();
+  if (!userId) return <div className="p-6">Please sign in.</div>;
 
-  const save = async () => {
-    setSaving(true); setMsg(null);
-    try {
-      const res = await fetch("/api/settings/company", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ companyName: company }),
-      });
-      const j = await res.json();
-      if (!res.ok || !j?.ok) throw new Error(j?.error || "Save failed");
-      setMsg("Saved.");
-    } catch (e:any) {
-      setMsg(e.message || "Save failed");
-    } finally {
-      setSaving(false);
-    }
-  };
+  const row = await prisma.companyProfile.findUnique({
+    where: { clerkUserId: userId },
+    select: { companyName: true },
+  });
 
   return (
-    <div className="max-w-xl">
-      <h1 className="mb-4 text-2xl font-semibold">Settings</h1>
-      <label className="text-sm font-medium text-slate-700">Your company name</label>
-      <input
-        className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
-        value={company}
-        onChange={(e) => setCompany(e.target.value)}
-        placeholder="e.g., ABC Software"
-      />
-      <p className="mt-1 text-xs text-slate-500">Used to infer the counterparty when both parties appear in a contract.</p>
-      <button onClick={save} disabled={saving} className="mt-3 rounded-md bg-black px-3 py-2 text-white text-sm">
-        {saving ? "Saving…" : "Save"}
-      </button>
-      {msg && <div className="mt-2 text-sm text-slate-600">{msg}</div>}
+    <div className="p-6 max-w-2xl">
+      <h1 className="text-2xl font-semibold">Settings</h1>
+
+      <div className="mt-6 rounded-lg border border-slate-200 bg-white p-4">
+        <div className="mb-2 text-sm font-semibold text-slate-800">Company profile</div>
+        <CompanyNameForm initial={row?.companyName ?? ""} />
+        <p className="mt-3 text-xs text-slate-500">
+          We use your company name to tell which party in a contract is “you” (provider or customer),
+          and set the other party as the counterparty automatically.
+        </p>
+      </div>
     </div>
   );
 }
