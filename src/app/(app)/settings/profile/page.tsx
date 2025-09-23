@@ -12,7 +12,6 @@ export default async function ProfileSettingsPage() {
     where: { clerkUserId: userId },
     select: {
       companyName: true,
-      billingEmail: true,
       timezone: true,
       currency: true,
       renewalLeadDaysDefault: true,
@@ -20,21 +19,23 @@ export default async function ProfileSettingsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <h1 className="text-xl font-semibold mb-4">Profile</h1>
-      <ProfileForm
-        initial={{
-          companyName: row?.companyName ?? "",
-          billingEmail: row?.billingEmail ?? "",
-          timezone: row?.timezone ?? "",
-          currency: row?.currency ?? "USD",
-          renewalLeadDaysDefault:
-            typeof row?.renewalLeadDaysDefault === "number" ? row!.renewalLeadDaysDefault : undefined,
-        }}
-      />
-      <p className="mt-3 text-xs text-slate-500">
-        We use your company name to detect which party in a contract is “you” and set the other as the counterparty.
-      </p>
+    <div className="max-w-2xl">
+      <h1 className="text-2xl font-semibold mb-6">Profile</h1>
+      <div className="rounded-lg border border-slate-200 bg-white p-4">
+        <ProfileForm
+          initial={{
+            companyName: row?.companyName ?? "",
+            timezone: row?.timezone ?? "America/New_York",
+            currency: row?.currency ?? "USD",
+            renewalLeadDaysDefault:
+              typeof row?.renewalLeadDaysDefault === "number" ? row!.renewalLeadDaysDefault : 45,
+          }}
+        />
+        <p className="mt-3 text-xs text-slate-500">
+          We use your company name to detect which party in a contract is “you” and set the other as
+          the counterparty automatically.
+        </p>
+      </div>
     </div>
   );
 }
