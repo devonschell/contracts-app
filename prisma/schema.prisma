@@ -1,5 +1,4 @@
 // prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -36,13 +35,15 @@ model Contract {
   paymentCadence String?
 
   // AI-extracted bullets (arrays saved as JSON)
-  unusualClauses    Json? // stores string[]
-  terminationRights Json? // stores string[]
+  unusualClauses    Json? // string[]
+  terminationRights Json? // string[]
 
   currentUploadId String? @unique
   currentUpload   Upload? @relation("CurrentUpload", fields: [currentUploadId], references: [id])
 
   uploads Upload[] @relation("ContractUploads")
+
+  @@index([clerkUserId])
 }
 
 model Upload {
@@ -58,6 +59,9 @@ model Upload {
 
   contract   Contract  @relation("ContractUploads", fields: [contractId], references: [id], onDelete: Cascade)
   currentFor Contract? @relation("CurrentUpload")
+
+  @@index([contractId])
+  @@index([clerkUserId])
 }
 
 model CompanyProfile {
@@ -68,4 +72,12 @@ model CompanyProfile {
   clerkUserId String  @unique
   companyName String?
   logoUrl     String?
+
+  // Settings
+  billingEmail           String?
+  timezone               String?   // e.g. "America/New_York"
+  currency               String?   // e.g. "USD"
+  renewalLeadDaysDefault Int?      // e.g. 45
+  notificationEmails     Json?     // string[] (future)
+  weeklyDigest           Boolean?  // future
 }
