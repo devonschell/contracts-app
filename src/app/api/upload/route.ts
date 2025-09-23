@@ -16,14 +16,28 @@ export async function POST(req: NextRequest) {
 
   try {
     const form = await req.formData();
-    const contractId = String(form.get("contractId") || "");
-    if (!contractId) return NextResponse.json({ ok: false, error: "Missing contractId" }, { status: 400 });
 
-    const contract = await prisma.contract.findFirst({
-      where: { id: contractId, clerkUserId: userId, deletedAt: null },
-      select: { id: true, currentUploadId: true },
-    });
-    if (!contract) return NextResponse.json({ ok: false, error: "Contract not found" }, { status: 404 });
+    // NEW: contractId can be omitted. If missing, we create a new contract on the fly.
+    let contractId = String(form.get("contractId") || "");
+    let contract: { id: string; currentUploadId: string | null } | null = null;
+
+    if (contractId) {
+      contract = await prisma.contract.findFirst({
+        where: { id: contractId, clerkUserId: userId, deletedAt: null },
+        select: { id: true, currentUploadId: true },
+      });
+      if (!contract) {
+        return NextResponse.json({ ok: false, error: "Contract not found" }, { status: 404 });
+      }
+    } else {
+      const created = await prisma.contract.create({
+        data: { clerkUserId: userId },
+        select: { id: true, currentUploadId: true },
+      });
+      contract = created;
+      contractId = created.id;
+      console.log("[upload] created contract on-the-fly:", contractId);
+    }
 
     const override = String(form.get("override") || "") === "true";
 
@@ -96,7 +110,7 @@ export async function POST(req: NextRequest) {
 
     const createdUpload = await prisma.upload.create({
       data: {
-        contractId: contract.id,
+        contractId: contractId,
         clerkUserId: userId,
         originalName,
         url: relPath,
@@ -108,7 +122,7 @@ export async function POST(req: NextRequest) {
 
     if (override || !contract.currentUploadId) {
       await prisma.contract.update({
-        where: { id: contract.id },
+        where: { id: contractId },
         data: { currentUploadId: createdUpload.id },
       });
     }
@@ -149,6 +163,16 @@ export async function POST(req: NextRequest) {
       if (Array.isArray(meta.terminationRights)) patch.terminationRights = meta.terminationRights;
     }
 
+    // Fallback: infer renewalDate when autoRenew is true but no date was parsed.
+    if (patch.autoRenew === true && !patch.renewalDate) {
+      if (patch.endDate) {
+        patch.renewalDate = patch.endDate;
+      } else if (patch.startDate && patch.termLengthMonths) {
+        patch.renewalDate = addMonths(patch.startDate, Number(patch.termLengthMonths));
+      }
+    }
+
+    // Rescue title/fee from summary if meta missed it
     if (!patch.title && aiSummary) {
       const m = aiSummary.match(/Contract Title:\s*(.+)/i);
       if (m) patch.title = m[1].trim().replace(/[•\-–]+$/, "");
@@ -159,12 +183,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (Object.keys(patch).length) {
-      await prisma.contract.update({ where: { id: contract.id }, data: patch });
+      await prisma.contract.update({ where: { id: contractId }, data: patch });
     }
 
     return NextResponse.json({
       ok: true,
       id: createdUpload.id,
+      contractId,
       url: relPath,
       aiSummary,
       meta: meta ?? null,
@@ -207,3 +232,8 @@ function normalizeCo(v?: string | null) {
     .trim();
 }
 function isSameCompany(a: string, b: string) { if (!a || !b) return false; return a === b || a.includes(b) || b.includes(a); }
+function addMonths(d: Date, m: number) {
+  const dt = new Date(d);
+  dt.setMonth(dt.getMonth() + m);
+  return dt;
+}

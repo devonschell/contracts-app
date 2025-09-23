@@ -54,27 +54,43 @@ export default async function ContractsPage(props: {
 
   return (
     <div className="space-y-6">
+      {/* Header row: title + segmented tabs, and New button on the right */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Contracts</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-semibold">Contracts</h1>
+
+          {/* Segmented tabs */}
+          <div className="inline-flex rounded-md border bg-white p-0.5">
+            <a
+              href="/contracts?tab=active"
+              aria-current={mode === "active" ? "page" : undefined}
+              className={`px-3 py-1.5 text-sm rounded-md transition
+                ${mode === "active"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-700 hover:bg-slate-100"}`}
+            >
+              Active
+            </a>
+            <a
+              href="/contracts?tab=deleted"
+              aria-current={mode === "deleted" ? "page" : undefined}
+              className={`px-3 py-1.5 text-sm rounded-md transition
+                ${mode === "deleted"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-700 hover:bg-slate-100"}`}
+            >
+              Deleted
+            </a>
+          </div>
+        </div>
+
         <NewContractButton />
       </div>
 
-      <div className="mb-2 text-sm">
-        <a
-          href="/contracts?tab=active"
-          className={`mr-3 ${mode === "active" ? "font-semibold" : "text-slate-500"}`}
-        >
-          Active
-        </a>
-        <a
-          href="/contracts?tab=deleted"
-          className={`${mode === "deleted" ? "font-semibold" : "text-slate-500"}`}
-        >
-          Deleted
-        </a>
+      {/* Table */}
+      <div className="rounded-lg border bg-white">
+        <ContractsTable rows={rows} mode={mode} />
       </div>
-
-      <ContractsTable rows={rows} mode={mode} />
     </div>
   );
 }
