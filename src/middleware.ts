@@ -2,7 +2,7 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-// Only these are public. EVERYTHING else requires sign-in.
+// Public routes (no auth). Keep your existing list.
 const isPublic = createRouteMatcher([
   "/login(.*)",
   "/signup(.*)",
@@ -10,27 +10,48 @@ const isPublic = createRouteMatcher([
   "/sign-up(.*)",
   "/favicon.ico",
 
-  // Public APIs that you secure internally
+  // Public APIs guarded internally
   "/api/cron/(.*)",     // guarded by CRON_SECRET inside the handler
   "/api/webhooks/(.*)", // e.g., Stripe webhooks
   "/api/health",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
-  // Allow public routes straight through
+  const url = req.nextUrl;
+
+  // 1) Let public routes straight through
   if (isPublic(req)) return;
 
-  // For everything else, require a user
+  // 2) Server-to-server bypass for cron/ops when CRON_SECRET matches
+  const cronSecret = process.env.CRON_SECRET || "";
+  const provided =
+    (req.headers.get("x-cron-secret") || url.searchParams.get("key") || "").trim();
+
+  const hasBypass =
+    Boolean(cronSecret) &&
+    provided.length > 0 &&
+    provided === cronSecret &&
+    (
+      url.pathname.startsWith("/api/cron/") ||
+      url.pathname.startsWith("/api/contracts")
+    );
+
+  if (hasBypass) {
+    // Skip Clerk auth for these API routes when secret matches
+    return;
+  }
+
+  // 3) Everything else requires a signed-in user
   const { userId } = await auth();
   if (!userId) {
     // APIs get 401 JSON
-    if (req.nextUrl.pathname.startsWith("/api/")) {
+    if (url.pathname.startsWith("/api/")) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
-    // Pages get redirected to your sign-in page (change to "/sign-in" if that's your route)
-    const url = new URL("/login", req.url);
-    url.searchParams.set("redirect_url", req.url); // optional: send back after login
-    return NextResponse.redirect(url);
+    // Pages get redirected to sign-in
+    const signInUrl = new URL("/login", req.url);
+    signInUrl.searchParams.set("redirect_url", req.url);
+    return NextResponse.redirect(signInUrl);
   }
 });
 
