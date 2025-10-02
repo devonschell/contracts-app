@@ -1,194 +1,192 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 
-type CommonProps = {
+type Opt = { label: string; value: string };
+
+type Props = {
   contractId: string;
-  field: string;
-  label?: string;
-  className?: string;
+  field:
+    | "counterparty" | "title" | "status"
+    | "startDate" | "endDate" | "renewalDate"
+    | "monthlyFee" | "annualFee" | "lateFeePct"
+    | "renewalNoticeDays" | "termLengthMonths"
+    | "autoRenew" | "billingCadence" | "paymentCadence";
+  type: "text" | "number" | "date" | "boolean" | "select";
+  value: any;
+  options?: Opt[];
 };
 
-type Props =
-  | (CommonProps & {
-      type?: "text" | "number" | "date";
-      value: string | number | null | undefined;
-    })
-  | (CommonProps & {
-      type: "select";
-      value: string | null | undefined;
-      options: { label: string; value: string }[];
-    })
-  | (CommonProps & { type: "boolean"; value: boolean | null | undefined });
-
-export default function InlineField(props: Props) {
-  const { contractId, field, className } = props;
-
-  const initial = useMemo(
-    () =>
-      props.type === "boolean"
-        ? Boolean(props.value)
-        : props.type === "date"
-        ? toDateInputValue(props.value)
-        : props.value ?? "",
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [props.type, JSON.stringify(props.value)]
-  );
-
+export default function InlineField({ contractId, field, type, value, options }: Props) {
+  const router = useRouter();
   const [editing, setEditing] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [val, setVal] = useState<any>(initial);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    // keep local state in sync if parent value changes
-    setVal(initial);
-  }, [initial]);
+  // keep a local draft in the UI-friendly format
+  const [draft, setDraft] = useState<any>(() => {
+    if (type === "date") {
+      const d = toDate(value);
+      return d ? d.toISOString().slice(0, 10) : "";           // YYYY-MM-DD
+    }
+    if (type === "boolean") return !!value;
+    if (value == null) return "";
+    return String(value);
+  });
 
-  const start = () => setEditing(true);
-  const cancel = () => {
-    setVal(initial);
-    setEditing(false);
-  };
-
-  const save = async () => {
-    setBusy(true);
-    try {
-      const body: any = {};
-      if (props.type === "date") {
-        // val is "YYYY-MM-DD" or ""
-        body[field] = val ? new Date(val as string).toISOString() : null;
-      } else if (props.type === "number") {
-        body[field] = val === "" ? null : Number(val);
-      } else if (props.type === "boolean") {
-        body[field] = Boolean(val);
-      } else if (props.type === "select") {
-        body[field] = val ?? null;
+  // re-initialize draft when value changes externally (after refresh)
+  useMemo(() => {
+    if (!editing) {
+      if (type === "date") {
+        const d = toDate(value);
+        setDraft(d ? d.toISOString().slice(0, 10) : "");
+      } else if (type === "boolean") {
+        setDraft(!!value);
       } else {
-        body[field] = val === "" ? null : val;
+        setDraft(value == null ? "" : String(value));
       }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
-      const res = await fetch(`/api/contracts/${contractId}/update`, {
+  async function onSave() {
+    setSaving(true);
+    try {
+      // send UI value, let the API coerce/validate
+      const payload =
+        type === "boolean"
+          ? { field, value: !!draft }
+          : type === "date"
+          ? { field, value: draft || "" }           // "YYYY-MM-DD" or ""
+          : type === "number"
+          ? { field, value: String(draft) }         // allow "2,500" etc; API cleans it
+          : { field, value: draft };
+
+      const res = await fetch(`/api/contracts/${contractId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
       });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok || !j?.ok) throw new Error(j?.error || res.statusText);
-      window.location.reload();
-    } catch (e: any) {
-      alert(e?.message || "Save failed");
-    } finally {
-      setBusy(false);
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || res.statusText || "Update failed");
+      }
+
       setEditing(false);
+      router.refresh(); // pick up the new value from the server
+    } catch (e: any) {
+      alert(e?.message || "Update failed");
+    } finally {
+      setSaving(false);
     }
-  };
+  }
 
-  // Display value formatting (read mode)
-  const display =
-    props.type === "boolean"
-      ? props.value === true
-        ? "Yes"
-        : props.value === false
-        ? "No"
-        : "—"
-      : props.type === "date"
-      ? props.value
-        ? new Date(props.value as any).toLocaleDateString()
-        : "—"
-      : props.value === null || props.value === undefined || props.value === ""
-      ? "—"
-      : String(props.value);
-
-  // keyboard helpers for inputs
-  const onKeyDown: React.KeyboardEventHandler<HTMLInputElement | HTMLSelectElement> = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      void save();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      cancel();
-    }
-  };
+  if (!editing) {
+    return (
+      <span className="inline-flex items-center gap-2">
+        <span>{formatDisplay(type, value)}</span>
+        <button
+          type="button"
+          aria-label="Edit"
+          title="Edit"
+          className="inline-flex h-6 w-6 items-center justify-center rounded hover:bg-slate-100 text-slate-600"
+          onClick={() => setEditing(true)}
+        >
+          {/* tiny pencil */}
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M13.5 2.5l4 4L7 17H3v-4L13.5 2.5z" stroke="currentColor" />
+          </svg>
+        </button>
+      </span>
+    );
+  }
 
   return (
-    <div className={className}>
-      {!editing ? (
-        <div className="group flex items-center gap-2">
-          <span className="text-sm text-slate-900">{display}</span>
-          <button
-            type="button"
-            onClick={start}
-            className="invisible cursor-pointer rounded p-1 text-slate-500 hover:bg-slate-100 group-hover:visible"
-            aria-label="Edit"
-            title="Edit"
-          >
-            ✎
-          </button>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2">
-          {props.type === "select" ? (
-            <select
-              value={(val as string) ?? ""}
-              onChange={(e) => setVal(e.target.value)}
-              onKeyDown={onKeyDown}
-              className="rounded border px-2 py-1 text-sm"
-            >
-              {(props.options ?? []).map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          ) : props.type === "boolean" ? (
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={Boolean(val)}
-                onChange={(e) => setVal(e.target.checked)}
-              />
-              {val ? "Yes" : "No"}
-            </label>
-          ) : (
-            <input
-              type={props.type ?? "text"}
-              value={val as any}
-              onChange={(e) => setVal(e.target.value)}
-              onKeyDown={onKeyDown}
-              className={`rounded border px-2 py-1 text-sm ${
-                props.type === "number" ? "w-48" : "w-40"
-              }`}
-            />
-          )}
-
-          <button
-            type="button"
-            onClick={save}
-            disabled={busy}
-            className="rounded bg-black px-2 py-1 text-xs font-medium text-white disabled:opacity-60"
-          >
-            {busy ? "Saving…" : "Save"}
-          </button>
-          <button
-            type="button"
-            onClick={cancel}
-            className="rounded border px-2 py-1 text-xs"
-          >
-            Cancel
-          </button>
-        </div>
+    <div className="flex items-center gap-2">
+      {type === "text" && (
+        <input
+          className="w-48 rounded border px-2 py-1 text-sm"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
       )}
+      {type === "number" && (
+        <input
+          className="w-32 rounded border px-2 py-1 text-sm"
+          inputMode="decimal"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="e.g. 2,500"
+        />
+      )}
+      {type === "date" && (
+        <input
+          type="date"
+          className="rounded border px-2 py-1 text-sm"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+      )}
+      {type === "boolean" && (
+        <select
+          className="rounded border px-2 py-1 text-sm"
+          value={draft ? "true" : "false"}
+          onChange={(e) => setDraft(e.target.value === "true")}
+        >
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      )}
+      {type === "select" && (
+        <select
+          className="rounded border px-2 py-1 text-sm"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+        >
+          {(options || []).map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      )}
+
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={saving}
+        className="rounded bg-slate-900 px-2 py-1 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+      >
+        {saving ? "Saving…" : "Save"}
+      </button>
+      <button
+        type="button"
+        onClick={() => setEditing(false)}
+        className="text-xs text-slate-600 underline underline-offset-2"
+      >
+        Cancel
+      </button>
     </div>
   );
 }
 
-/* ---------- utils ---------- */
-function toDateInputValue(v: unknown): string {
-  if (!v) return "";
-  const dt = typeof v === "string" ? new Date(v) : (v as Date);
-  if (isNaN(dt.getTime())) return "";
-  const yyyy = dt.getFullYear();
-  const mm = String(dt.getMonth() + 1).padStart(2, "0");
-  const dd = String(dt.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+/* ---------- helpers ---------- */
+
+function toDate(v: any): Date | null {
+  if (!v) return null;
+  const d = typeof v === "string" ? new Date(v) : v;
+  return Number.isNaN(d?.getTime?.()) ? null : d;
+}
+
+function formatDisplay(type: Props["type"], v: any) {
+  if (v == null || v === "") return "—";
+  if (type === "date") {
+    const d = toDate(v);
+    return d ? d.toLocaleDateString() : "—";
+  }
+  if (type === "boolean") return v ? "Yes" : "No";
+  if (type === "number") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n.toLocaleString() : String(v);
+  }
+  return String(v);
 }

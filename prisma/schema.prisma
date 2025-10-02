@@ -1,4 +1,5 @@
 // prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -43,6 +44,9 @@ model Contract {
 
   uploads Upload[] @relation("ContractUploads")
 
+  // NEW: back-relation so NotificationLog.contract has a peer
+  logs NotificationLog[] @relation("ContractLogs")
+
   @@index([clerkUserId])
 }
 
@@ -80,4 +84,43 @@ model CompanyProfile {
   renewalLeadDaysDefault Int?      // e.g. 45
   notificationEmails     Json?     // string[] (future)
   weeklyDigest           Boolean?  // future
+
+  // NEW: notifications
+  notificationPrefs NotificationPrefs?
+  notificationLogs  NotificationLog[]
+}
+
+enum NotificationType {
+  RENEWAL_ALERT
+  WEEKLY_DIGEST
+  TEST
+}
+
+model NotificationPrefs {
+  id            String   @id @default(cuid())
+  companyId     String   @unique
+  recipientsCsv String   @default("") // comma-separated emails
+  renewalAlerts Boolean  @default(true)
+  weeklyDigest  Boolean  @default(true)
+  noticeDays    Int      @default(30) // fallback when a Contract doesn’t specify renewalNoticeDays
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company CompanyProfile @relation(fields: [companyId], references: [id])
+}
+
+model NotificationLog {
+  id         String           @id @default(cuid())
+  companyId  String
+  contractId String?
+  type       NotificationType
+  subject    String
+  sentTo     String           // comma-separated list actually used
+  status     String           // "SENT" | "ERROR"
+  error      String?
+  sentAt     DateTime         @default(now())
+
+  company  CompanyProfile @relation(fields: [companyId], references: [id])
+  // Relation named so it pairs with Contract.logs
+  contract Contract?      @relation("ContractLogs", fields: [contractId], references: [id])
 }

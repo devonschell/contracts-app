@@ -8,6 +8,7 @@ type QueueItem = {
   status: "idle" | "uploading" | "done" | "error";
   progress: number;
   message?: string;
+  contractId?: string;
 };
 
 export default function UploadPage() {
@@ -15,23 +16,23 @@ export default function UploadPage() {
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const onFilesChosen = useCallback((files: FileList | null) => {
-    if (!files || !files[0]) return;
-    const f = files[0];
-    setQueue([
-      {
-        file: f,
-        sizeLabel: humanFileSize(f.size),
-        status: "idle",
-        progress: 0,
-      },
-    ]);
+    if (!files || files.length === 0) return;
+    const items: QueueItem[] = Array.from(files).map((f) => ({
+      file: f,
+      sizeLabel: humanFileSize(f.size),
+      status: "idle",
+      progress: 0,
+    }));
+    setQueue(items);
   }, []);
 
   const onDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       e.stopPropagation();
-      onFilesChosen(e.dataTransfer.files);
+      const files = e.dataTransfer.files;
+      if (!files || files.length === 0) return;
+      onFilesChosen(files);
     },
     [onFilesChosen]
   );
@@ -39,73 +40,67 @@ export default function UploadPage() {
   const doBrowse = () => inputRef.current?.click();
   const uploading = useMemo(() => queue.some((q) => q.status === "uploading"), [queue]);
 
-  const startUpload = async () => {
-    if (!queue[0]) return alert("Choose a contract file first.");
-    const current = queue[0];
-    updateQueue(0, {
-      status: "uploading",
-      progress: 8,
-      message: `Creating contract for “${current.file.name}”...`,
-    });
+  const startUploadAll = async () => {
+    if (queue.length === 0) return alert("Choose one or more contract files first.");
 
-    try {
-      // 1) create a new contract
-      const newRes = await fetch("/api/contracts/new", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        cache: "no-store",
+    // Upload sequentially (simple & reliable for large files)
+    for (let i = 0; i < queue.length; i++) {
+      const item = queue[i];
+      if (item.status === "done") continue;
+
+      updateQueue(i, {
+        status: "uploading",
+        progress: 6,
+        message: `Uploading “${item.file.name}”…`,
       });
-      const newJson = await newRes.json();
-      if (!newRes.ok || !newJson?.id) {
-        const reason = newJson?.error || "Could not create contract";
-        throw new Error(reason);
-      }
-      const contractId: string = newJson.id;
 
-      // 2) upload the file to /api/upload (must include 'file' and 'contractId')
-      updateQueue(0, { message: "Uploading file…" });
+      try {
+        const form = new FormData();
+        // Let the server create the contract automatically (no contractId field)
+        form.append("file", item.file);
 
-      const form = new FormData();
-      form.append("file", current.file); // field name must be 'file'
-      form.append("contractId", contractId);
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/upload", true);
 
-      const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/upload", true);
+        xhr.upload.onprogress = (evt) => {
+          if (!evt.lengthComputable) return;
+          const pct = Math.min(95, Math.round((evt.loaded / evt.total) * 100));
+          updateQueue(i, { progress: pct });
+        };
 
-      xhr.upload.onprogress = (evt) => {
-        if (!evt.lengthComputable) return;
-        const pct = Math.min(95, Math.round((evt.loaded / evt.total) * 100));
-        updateQueue(0, { progress: pct });
-      };
-
-      xhr.onreadystatechange = () => {
-        if (xhr.readyState !== XMLHttpRequest.DONE) return;
-        try {
-          const json = JSON.parse(xhr.responseText || "{}");
-          if (xhr.status >= 200 && xhr.status < 300 && json?.ok) {
-            updateQueue(0, { status: "done", progress: 100, message: "Upload complete." });
-            window.location.href = `/contracts/${contractId}`;
-          } else {
-            const reason = json?.error || json?.message || "Unknown error";
-            updateQueue(0, { status: "error", message: `Upload failed: ${reason}` });
-            alert(`Upload failed: ${reason}`);
+        const done = () => {
+          try {
+            const json = JSON.parse(xhr.responseText || "{}");
+            if (xhr.status >= 200 && xhr.status < 300 && json?.ok) {
+              updateQueue(i, { status: "done", progress: 100, message: "Upload complete.", contractId: json.contractId });
+            } else {
+              const reason = json?.error || json?.message || "Unknown error";
+              updateQueue(i, { status: "error", message: `Upload failed: ${reason}` });
+            }
+          } catch {
+            updateQueue(i, { status: "error", message: "Bad response from server." });
           }
-        } catch {
-          updateQueue(0, { status: "error", message: "Bad response from server." });
-          alert("Upload failed: bad response from server.");
-        }
-      };
+        };
 
-      xhr.onerror = () => {
-        updateQueue(0, { status: "error", message: "Network error." });
-        alert("Upload failed: network error.");
-      };
-
-      xhr.send(form);
-    } catch (err: any) {
-      updateQueue(0, { status: "error", message: err?.message || "Upload failed." });
-      alert(`Upload failed: ${err?.message || "reason unknown"}`);
+        await new Promise<void>((resolve) => {
+          xhr.onreadystatechange = () => {
+            if (xhr.readyState !== XMLHttpRequest.DONE) return;
+            done();
+            resolve();
+          };
+          xhr.onerror = () => {
+            updateQueue(i, { status: "error", message: "Network error." });
+            resolve();
+          };
+          xhr.send(form);
+        });
+      } catch (err: any) {
+        updateQueue(i, { status: "error", message: err?.message || "Upload failed." });
+      }
     }
+
+    // After all uploads are started/finished, go to contracts list
+    window.location.href = "/contracts";
   };
 
   function updateQueue(index: number, patch: Partial<QueueItem>) {
@@ -143,12 +138,12 @@ export default function UploadPage() {
               browse
             </button>
           </p>
-          <p className="text-sm opacity-80">
-            We’ll extract text, auto-fill key fields, and generate a summary.
-          </p>
+          <p className="text-sm opacity-80">Drop multiple files to import in a batch.</p>
+
           <input
             ref={inputRef}
             type="file"
+            multiple
             accept=".pdf,.doc,.docx,.txt"
             className="hidden"
             onChange={(e) => onFilesChosen(e.target.files)}
@@ -161,31 +156,39 @@ export default function UploadPage() {
             <h2 className="text-sm font-semibold text-slate-800">Upload queue</h2>
           </div>
 
-        <div className="px-4 py-4">
+          <div className="px-4 py-4 space-y-4">
             {queue.length === 0 ? (
-              <p className="text-sm text-slate-500">No file selected.</p>
+              <p className="text-sm text-slate-500">No files selected.</p>
             ) : (
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-sm font-medium text-slate-900">{queue[0].file.name}</div>
-                  <div className="text-xs text-slate-500">{queue[0].sizeLabel}</div>
-                  <div className="mt-3 h-2 w-64 overflow-hidden rounded-full bg-slate-200">
-                    <div
-                      className="h-2 rounded-full bg-slate-800 transition-all"
-                      style={{ width: `${queue[0].progress}%` }}
-                    />
+              <>
+                {queue.map((item, i) => (
+                  <div key={i} className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-slate-900">{item.file.name}</div>
+                      <div className="text-xs text-slate-500">{item.sizeLabel}</div>
+                      <div className="mt-3 h-2 w-64 overflow-hidden rounded-full bg-slate-200">
+                        <div
+                          className={`h-2 rounded-full transition-all ${
+                            item.status === "error" ? "bg-red-500" : "bg-slate-800"
+                          }`}
+                          style={{ width: `${item.progress}%` }}
+                        />
+                      </div>
+                      <div className="mt-2 text-xs text-slate-600">{statusLabel(item)}</div>
+                    </div>
                   </div>
-                  <div className="mt-2 text-xs text-slate-600">{statusLabel(queue[0])}</div>
-                </div>
+                ))}
 
-                <button
-                  onClick={startUpload}
-                  disabled={uploading || queue[0].status === "done"}
-                  className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {uploading ? "Uploading..." : "Upload & Create"}
-                </button>
-              </div>
+                <div className="pt-2">
+                  <button
+                    onClick={startUploadAll}
+                    disabled={uploading || queue.every((q) => q.status === "done")}
+                    className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {uploading ? "Uploading..." : "Upload & Create"}
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>

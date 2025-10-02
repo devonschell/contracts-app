@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   try {
     const form = await req.formData();
 
-    // NEW: contractId can be omitted. If missing, we create a new contract on the fly.
+    // contractId can be omitted; if missing we create a new contract
     let contractId = String(form.get("contractId") || "");
     let contract: { id: string; currentUploadId: string | null } | null = null;
 
@@ -31,13 +31,16 @@ export async function POST(req: NextRequest) {
       }
     } else {
       const created = await prisma.contract.create({
-        data: { clerkUserId: userId },
+        data: { clerkUserId: userId, status: "PROCESSING" },
         select: { id: true, currentUploadId: true },
       });
       contract = created;
       contractId = created.id;
       console.log("[upload] created contract on-the-fly:", contractId);
     }
+
+    // Ensure status shows as processing
+    await prisma.contract.update({ where: { id: contractId }, data: { status: "PROCESSING" } });
 
     const override = String(form.get("override") || "") === "true";
 
@@ -182,9 +185,15 @@ export async function POST(req: NextRequest) {
       if (m) patch.monthlyFee = round2(Number(m[1].replace(/,/g, "")));
     }
 
+    // If no title at all, use filename stub
+    if (!patch.title) patch.title = originalName.replace(/\.(pdf|docx?|txt)$/i, "");
+
     if (Object.keys(patch).length) {
       await prisma.contract.update({ where: { id: contractId }, data: patch });
     }
+
+    // Done: mark ACTIVE
+    await prisma.contract.update({ where: { id: contractId }, data: { status: "ACTIVE" } });
 
     return NextResponse.json({
       ok: true,

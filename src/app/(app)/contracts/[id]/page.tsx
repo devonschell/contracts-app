@@ -5,14 +5,11 @@ import Link from "next/link";
 import ReplaceUploadButton from "@/components/ReplaceUploadButton";
 import ContractActions from "@/components/ContractActions";
 import InlineField from "@/components/InlineField";
-import CollapsibleCard from "@/components/CollapsibleCard";
 import AiPanel from "./AiPanel";
 
 export const dynamic = "force-dynamic";
 
-export default async function ContractDetail(props: {
-  params: Promise<{ id: string }>;
-}) {
+export default async function ContractDetail(props: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
   if (!userId) return <div className="p-6">Please sign in.</div>;
 
@@ -28,7 +25,6 @@ export default async function ContractDetail(props: {
   if (!c) return <div className="p-6">Not found.</div>;
   const isDeleted = !!c.deletedAt;
 
-  // JSON -> arrays
   const toStrArray = (v: unknown): string[] =>
     Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
   const unusualClauses = toStrArray((c as any).unusualClauses);
@@ -71,11 +67,12 @@ export default async function ContractDetail(props: {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Main */}
         <div className="space-y-6 lg:col-span-2">
-          {/* Details */}
+          {/* Details (read-only rows with inline ✏️ edit) */}
           <div className="rounded-lg border border-slate-200 bg-white">
             <div className="border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800">
               Details
             </div>
+
             <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
               <Labeled label="Counterparty">
                 <InlineField type="text" contractId={c.id} field="counterparty" value={c.counterparty ?? ""} />
@@ -164,7 +161,7 @@ export default async function ContractDetail(props: {
             </div>
           )}
 
-          {/* AI Summary dropdown */}
+          {/* AI Summary */}
           <AiPanel
             contractId={c.id}
             aiSummary={c.currentUpload?.aiSummary ?? null}
