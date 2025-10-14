@@ -12,3 +12,10 @@ public/brand/
 
 # clerk configuration (can include secrets)
 /.clerk/
+
+# env files
+.env
+.env.local
+.env.*.local
+*.env
+*.env.*
