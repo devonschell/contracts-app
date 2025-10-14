@@ -5,8 +5,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // use Neon POOLER URL
+  directUrl = env("DIRECT_URL")   // use Neon PRIMARY (non-pooler) URL
 }
 
 model Contract {
@@ -44,7 +45,7 @@ model Contract {
 
   uploads Upload[] @relation("ContractUploads")
 
-  // NEW: back-relation so NotificationLog.contract has a peer
+  // back-relation so NotificationLog.contract has a peer
   logs NotificationLog[] @relation("ContractLogs")
 
   @@index([clerkUserId])
@@ -85,7 +86,7 @@ model CompanyProfile {
   notificationEmails     Json?     // string[] (future)
   weeklyDigest           Boolean?  // future
 
-  // NEW: notifications
+  // notifications
   notificationPrefs NotificationPrefs?
   notificationLogs  NotificationLog[]
 }
@@ -121,6 +122,8 @@ model NotificationLog {
   sentAt     DateTime         @default(now())
 
   company  CompanyProfile @relation(fields: [companyId], references: [id])
-  // Relation named so it pairs with Contract.logs
   contract Contract?      @relation("ContractLogs", fields: [contractId], references: [id])
+
+  @@index([companyId])
+  @@index([contractId])
 }
