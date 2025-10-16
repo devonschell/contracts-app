@@ -11,7 +11,9 @@ export const runtime = "nodejs";
 
 export async function POST(_req: NextRequest, ctx: { params: { id: string } }) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!userId) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
 
   const id = ctx.params?.id;
   if (!id) return NextResponse.json({ ok: false, error: "Missing id" }, { status: 400 });
@@ -21,18 +23,36 @@ export async function POST(_req: NextRequest, ctx: { params: { id: string } }) {
     include: { currentUpload: { select: { id: true, url: true, originalName: true } } },
   });
   if (!c) return NextResponse.json({ ok: false, error: "Not found" }, { status: 404 });
-  if (!c.currentUpload) return NextResponse.json({ ok: false, error: "No current file to analyze" }, { status: 400 });
+  if (!c.currentUpload?.url) {
+    return NextResponse.json({ ok: false, error: "No current file to analyze" }, { status: 400 });
+  }
 
-  const rel = c.currentUpload.url.startsWith("/") ? c.currentUpload.url.slice(1) : c.currentUpload.url;
-  const abs = path.join(process.cwd(), "public", rel);
-
+  // ---- read bytes from Blob (prod) or disk (dev) ----
   let buffer: Buffer;
-  try { buffer = await fs.readFile(abs); }
-  catch { return NextResponse.json({ ok: false, error: "File not found on disk" }, { status: 404 }); }
+  const fileUrl = c.currentUpload.url;
 
+  try {
+    if (/^https?:\/\//i.test(fileUrl)) {
+      // Vercel Blob public URL
+      const res = await fetch(fileUrl);
+      if (!res.ok) throw new Error(`fetch ${res.status}`);
+      const arr = new Uint8Array(await res.arrayBuffer());
+      buffer = Buffer.from(arr);
+    } else {
+      // Local dev: /uploads/... under public/
+      const rel = fileUrl.startsWith("/") ? fileUrl.slice(1) : fileUrl;
+      const abs = path.join(process.cwd(), "public", rel);
+      buffer = await fs.readFile(abs);
+    }
+  } catch (e: any) {
+    console.error("[suggest] read file failed:", e?.message || e);
+    return NextResponse.json({ ok: false, error: "File not found" }, { status: 404 });
+  }
+
+  // ---- extract text & run AI ----
   const text = await extractTextFromBuffer(
     buffer,
-    c.currentUpload.originalName || path.basename(abs),
+    c.currentUpload.originalName || "file",
     { allowOCR: true, ocrPages: 5, ocrDPI: 300 }
   );
   const textLen = text?.trim().length ?? 0;
@@ -42,18 +62,44 @@ export async function POST(_req: NextRequest, ctx: { params: { id: string } }) {
   }
 
   const profile = await prisma.companyProfile.findUnique({
-    where: { clerkUserId: userId }, select: { companyName: true },
+    where: { clerkUserId: userId },
+    select: { companyName: true },
   });
   const myCompanyName = profile?.companyName ?? null;
 
   let aiSummary = "";
   let meta: any = null;
-  try { aiSummary = await summarizeContract(text); } catch (e: any) { console.warn("[suggest] summarize failed:", e?.message); }
-  try { meta = await extractContractMeta(text, { myCompanyName }); } catch (e: any) { console.warn("[suggest] meta failed:", e?.message); }
+  try { aiSummary = await summarizeContract(text); }
+  catch (e: any) { console.warn("[suggest] summarize failed:", e?.message); }
+  try { meta = await extractContractMeta(text, { myCompanyName }); }
+  catch (e: any) { console.warn("[suggest] meta failed:", e?.message); }
 
-  await prisma.upload.update({ where: { id: c.currentUpload.id }, data: { aiSummary } });
+  // save summary to the upload record
+  try {
+    await prisma.upload.update({ where: { id: c.currentUpload.id }, data: { aiSummary } });
+  } catch (e) {
+    console.warn("[suggest] failed to save aiSummary:", (e as Error)?.message);
+  }
 
+  // ---- patch contract with extracted metadata ----
   const patch: Record<string, any> = {};
+
+  const isStr = (v: any): v is string => typeof v === "string" && v.trim().length > 0;
+  const isFiniteNum = (v: any): v is number => Number.isFinite(Number(v));
+  const normalizeCo = (v?: string | null) =>
+    (v || "")
+      .toLowerCase()
+      .replace(/[.,']/g, " ")
+      .replace(/\b(incorporated|inc|llc|l\.l\.c|corp|corporation|co|company|ltd|limited)\b/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  const isSameCo = (a: string, b: string) => !!a && !!b && (a === b || a.includes(b) || b.includes(a));
+  const setISODateIfValid = (obj: Record<string, any>, key: string, iso?: string | null) => {
+    if (!iso || typeof iso !== "string") return;
+    const dt = new Date(iso.length === 10 ? iso + "T00:00:00Z" : iso);
+    if (!isNaN(dt.getTime())) obj[key] = dt;
+  };
+
   if (meta && typeof meta === "object") {
     if (isStr(meta.contractTitle)) patch.title = meta.contractTitle;
 
@@ -61,8 +107,8 @@ export async function POST(_req: NextRequest, ctx: { params: { id: string } }) {
     const customer = normalizeCo(meta.customer);
     const mine = normalizeCo(myCompanyName);
     if (provider || customer) {
-      if (mine && provider && isSameCompany(provider, mine)) patch.counterparty = meta.customer || null;
-      else if (mine && customer && isSameCompany(customer, mine)) patch.counterparty = meta.provider || null;
+      if (mine && provider && isSameCo(provider, mine)) patch.counterparty = meta.customer || null;
+      else if (mine && customer && isSameCo(customer, mine)) patch.counterparty = meta.provider || null;
       else patch.counterparty = meta.customer || meta.provider || null;
     }
 
@@ -74,12 +120,14 @@ export async function POST(_req: NextRequest, ctx: { params: { id: string } }) {
     if (isFiniteNum(meta.renewalNoticeDays)) patch.renewalNoticeDays = Number(meta.renewalNoticeDays);
     if (typeof meta.autoRenew === "boolean") patch.autoRenew = meta.autoRenew;
 
-    let monthly = safeNum(meta.monthlyFee);
-    let annual = safeNum(meta.annualFee);
-    if (monthly == null && annual != null) monthly = annual / 12;
-    if (annual == null && monthly != null) annual = monthly * 12;
-    if (monthly != null) patch.monthlyFee = round2(monthly);
-    if (annual != null) patch.annualFee = round2(annual);
+    let monthly = Number(meta.monthlyFee);
+    let annual = Number(meta.annualFee);
+    if (!Number.isFinite(monthly)) monthly = NaN;
+    if (!Number.isFinite(annual)) annual = NaN;
+    if (Number.isNaN(monthly) && Number.isFinite(annual)) monthly = annual / 12;
+    if (Number.isNaN(annual) && Number.isFinite(monthly)) annual = monthly * 12;
+    if (Number.isFinite(monthly)) patch.monthlyFee = Math.round(monthly * 100) / 100;
+    if (Number.isFinite(annual)) patch.annualFee = Math.round(annual * 100) / 100;
     if (isFiniteNum(meta.lateFeePct)) patch.lateFeePct = Number(meta.lateFeePct);
 
     if (isStr(meta.billingCadence)) patch.billingCadence = String(meta.billingCadence).toUpperCase();
@@ -89,25 +137,9 @@ export async function POST(_req: NextRequest, ctx: { params: { id: string } }) {
     if (Array.isArray(meta.terminationRights)) patch.terminationRights = meta.terminationRights;
   }
 
-  if (Object.keys(patch).length) { try { await prisma.contract.update({ where: { id: c.id }, data: patch }); } catch {} }
+  if (Object.keys(patch).length) {
+    try { await prisma.contract.update({ where: { id: c.id }, data: patch }); } catch {}
+  }
 
   return NextResponse.json({ ok: true, aiSummary, meta, extractedChars: textLen });
 }
-
-/* helpers */
-function setISODateIfValid(obj: Record<string, any>, key: string, iso?: string | null) {
-  if (!iso || typeof iso !== "string") return;
-  const dt = new Date(iso.length === 10 ? iso + "T00:00:00Z" : iso);
-  if (!isNaN(dt.getTime())) obj[key] = dt;
-}
-function isFiniteNum(v: any): v is number { const n = Number(v); return Number.isFinite(n); }
-function safeNum(v: any) { const n = Number(v); return Number.isFinite(n) ? n : null; }
-function isStr(v: any): v is string { return typeof v === "string" && v.trim().length > 0; }
-function round2(n: number) { return Math.round(n * 100) / 100; }
-function normalizeCo(v?: string | null) {
-  if (!v) return "";
-  return v.toLowerCase().replace(/[.,']/g, " ")
-    .replace(/\b(incorporated|inc|llc|l\.l\.c|corp|corporation|co|company|ltd|limited)\b/g, "")
-    .replace(/\s+/g, " ").trim();
-}
-function isSameCompany(a: string, b: string) { if (!a || !b) return false; return a === b || a.includes(b) || b.includes(a); }
