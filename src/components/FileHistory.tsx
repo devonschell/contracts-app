@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { fileUrl } from "@/lib/fileUrl"; // <-- NEW
 
 type Item = {
   id: string;
@@ -37,7 +38,13 @@ export default function FileHistory({ items }: { items: Item[] }) {
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-500 min-w-[48px]">{i === 0 ? "Latest" : ""}</span>
             {u.url ? (
-              <a href={u.url} className="underline" target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+              <a
+                href={fileUrl(u.url)}               {/* <-- wrap the URL */}
+                className="underline"
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+              >
                 {u.originalName ?? "File"}
               </a>
             ) : (
