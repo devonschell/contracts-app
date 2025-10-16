@@ -6,19 +6,20 @@ import path from "path";
 import fs from "fs/promises";
 import { summarizeContract, extractContractMeta } from "@/lib/ai";
 import { extractTextFromBuffer } from "@/lib/extractText";
-import { put } from "@vercel/blob"; // <-- NEW
+import { put } from "@vercel/blob";
 
 export const runtime = "nodejs";
 export const maxUploadSize = 50 * 1024 * 1024; // 50 MB
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!userId)
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   try {
     const form = await req.formData();
 
-    // Optional contractId; if missing, create a contract on the fly
+    // Optional contractId; if missing, create one on the fly
     let contractId = String(form.get("contractId") || "");
     let contract: { id: string; currentUploadId: string | null } | null = null;
 
@@ -50,9 +51,13 @@ export async function POST(req: NextRequest) {
 
     if (!(file instanceof File)) {
       console.error("[upload] No File in form. Keys:", Array.from(form.keys()));
-      return NextResponse.json({ ok: false, error: "No file provided (use field 'file')." }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "No file provided (use field 'file')." },
+        { status: 400 }
+      );
     }
-    if (file.size > maxUploadSize) return NextResponse.json({ ok: false, error: "File too large" }, { status: 413 });
+    if (file.size > maxUploadSize)
+      return NextResponse.json({ ok: false, error: "File too large" }, { status: 413 });
 
     const originalName = (file as any).name || "upload";
     const ext = safeExt(originalName);
@@ -66,30 +71,33 @@ export async function POST(req: NextRequest) {
     let storedUrl: string;
 
     if (isVercel) {
-      // Vercel (production): store in Blob
-      // Requires: BLOB_READ_WRITE_TOKEN set in Vercel Project → Settings → Environment Variables
+      // Vercel (prod): store in Blob (needs BLOB_READ_WRITE_TOKEN on the project)
       const contentType = guessContentType(ext);
       const blob = await put(key, buffer, {
         access: "public",
-        token: process.env.BLOB_READ_WRITE_TOKEN, // if not set, put() will error
+        token: process.env.BLOB_READ_WRITE_TOKEN,
         contentType,
         addRandomSuffix: false,
       });
-      storedUrl = blob.url; // e.g. https://<bucket>.public.blob.vercel-storage.com/uploads/123.pdf
+      storedUrl = blob.url; // https://<bucket>.public.blob.vercel-storage.com/uploads/...
       console.log("[upload] stored to Blob:", storedUrl);
     } else {
       // Local dev: write to public/uploads
       const absDir = path.join(process.cwd(), "public", "uploads");
       await fs.mkdir(absDir, { recursive: true });
       await fs.writeFile(path.join(absDir, filename), buffer);
-      storedUrl = `/uploads/${filename}`; // relative path; fileUrl() will prefix when needed
+      storedUrl = `/uploads/${filename}`;
       console.log("[upload] stored locally:", storedUrl);
     }
 
     // ---------- EXTRACT TEXT & RUN AI ----------
     let text = "";
     try {
-      text = await extractTextFromBuffer(buffer, originalName, { allowOCR: true, ocrPages: 5, ocrDPI: 300 });
+      text = await extractTextFromBuffer(buffer, originalName, {
+        allowOCR: true,
+        ocrPages: 5,
+        ocrDPI: 300,
+      });
     } catch (e: any) {
       console.warn("[upload] extractTextFromBuffer threw:", e?.message);
     }
@@ -120,7 +128,10 @@ export async function POST(req: NextRequest) {
       }
       try {
         meta = await extractContractMeta(text, { myCompanyName });
-        console.log("[upload] meta keys:", meta && typeof meta === "object" ? Object.keys(meta) : null);
+        console.log(
+          "[upload] meta keys:",
+          meta && typeof meta === "object" ? Object.keys(meta) : null
+        );
       } catch (e: any) {
         aiReasons.push(`meta_error:${e?.message || "unknown"}`);
         console.warn("[upload] meta failed:", e?.message);
@@ -135,7 +146,7 @@ export async function POST(req: NextRequest) {
         contractId,
         clerkUserId: userId,
         originalName,
-        url: storedUrl, // <-- IMPORTANT: blob URL in prod, /uploads/... in dev
+        url: storedUrl, // Blob URL in prod, /uploads/... in dev
         bytes: buffer.length,
         aiSummary: aiSummary ?? null,
       },
@@ -157,8 +168,10 @@ export async function POST(req: NextRequest) {
       const customer = normalizeCo(meta.customer);
       const mine = normalizeCo(myCompanyName);
       if (provider || customer) {
-        if (mine && provider && isSameCompany(provider, mine)) patch.counterparty = meta.customer || null;
-        else if (mine && customer && isSameCompany(customer, mine)) patch.counterparty = meta.provider || null;
+        if (mine && provider && isSameCompany(provider, mine))
+          patch.counterparty = meta.customer || null;
+        else if (mine && customer && isSameCompany(customer, mine))
+          patch.counterparty = meta.provider || null;
         else patch.counterparty = meta.customer || meta.provider || null;
       }
 
@@ -166,8 +179,10 @@ export async function POST(req: NextRequest) {
       setISODateIfValid(patch, "endDate", meta.endDateISO);
       setISODateIfValid(patch, "renewalDate", meta.renewalDateISO);
 
-      if (isFiniteNum(meta.termLengthMonths)) patch.termLengthMonths = Number(meta.termLengthMonths);
-      if (isFiniteNum(meta.renewalNoticeDays)) patch.renewalNoticeDays = Number(meta.renewalNoticeDays);
+      if (isFiniteNum(meta.termLengthMonths))
+        patch.termLengthMonths = Number(meta.termLengthMonths);
+      if (isFiniteNum(meta.renewalNoticeDays))
+        patch.renewalNoticeDays = Number(meta.renewalNoticeDays);
       if (typeof meta.autoRenew === "boolean") patch.autoRenew = meta.autoRenew;
 
       let monthly = safeNum(meta.monthlyFee);
@@ -178,18 +193,25 @@ export async function POST(req: NextRequest) {
       if (annual != null) patch.annualFee = round2(annual);
       if (isFiniteNum(meta.lateFeePct)) patch.lateFeePct = Number(meta.lateFeePct);
 
-      if (isStr(meta.billingCadence)) patch.billingCadence = String(meta.billingCadence).toUpperCase();
-      if (isStr(meta.paymentCadence)) patch.paymentCadence = String(meta.paymentCadence).toUpperCase();
+      if (isStr(meta.billingCadence))
+        patch.billingCadence = String(meta.billingCadence).toUpperCase();
+      if (isStr(meta.paymentCadence))
+        patch.paymentCadence = String(meta.paymentCadence).toUpperCase();
 
-      if (Array.isArray(meta.unusualClauses)) patch.unusualClauses = meta.unusualClauses;
-      if (Array.isArray(meta.terminationRights)) patch.terminationRights = meta.terminationRights;
+      if (Array.isArray(meta.unusualClauses))
+        patch.unusualClauses = meta.unusualClauses;
+      if (Array.isArray(meta.terminationRights))
+        patch.terminationRights = meta.terminationRights;
     }
 
+    // Fallback renewal date when autoRenew true but none parsed
     if (patch.autoRenew === true && !patch.renewalDate) {
       if (patch.endDate) patch.renewalDate = patch.endDate;
-      else if (patch.startDate && patch.termLengthMonths) patch.renewalDate = addMonths(patch.startDate, Number(patch.termLengthMonths));
+      else if (patch.startDate && patch.termLengthMonths)
+        patch.renewalDate = addMonths(patch.startDate, Number(patch.termLengthMonths));
     }
 
+    // Rescue title/fee from summary if meta missed it
     if (!patch.title && aiSummary) {
       const m = aiSummary.match(/Contract Title:\s*(.+)/i);
       if (m) patch.title = m[1].trim().replace(/[•\-–]+$/, "");
@@ -228,7 +250,9 @@ function safeExt(name: string) {
 function guessContentType(ext: string) {
   if (!ext) return "application/octet-stream";
   if (/\.pdf$/i.test(ext)) return "application/pdf";
-  if (/\.docx?$/i.test(ext)) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (/\.docx$/i.test(ext))
+    return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (/\.doc$/i.test(ext)) return "application/msword"; // <— the tweak
   if (/\.txt$/i.test(ext)) return "text/plain";
   return "application/octet-stream";
 }
@@ -243,10 +267,20 @@ function setISODateIfValid(obj: Record<string, any>, key: string, iso?: string |
   const dt = new Date(iso.length === 10 ? `${iso}T00:00:00Z` : iso);
   if (!isNaN(dt.getTime())) obj[key] = dt;
 }
-function isFiniteNum(v: any): v is number { const n = Number(v); return Number.isFinite(n); }
-function safeNum(v: any) { const n = Number(v); return Number.isFinite(n) ? n : null; }
-function isStr(v: any): v is string { return typeof v === "string" && v.trim().length > 0; }
-function round2(n: number) { return Math.round(n * 100) / 100; }
+function isFiniteNum(v: any): v is number {
+  const n = Number(v);
+  return Number.isFinite(n);
+}
+function safeNum(v: any) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+function isStr(v: any): v is string {
+  return typeof v === "string" && v.trim().length > 0;
+}
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
 function normalizeCo(v?: string | null) {
   if (!v) return "";
   return v
@@ -256,5 +290,12 @@ function normalizeCo(v?: string | null) {
     .replace(/\s+/g, " ")
     .trim();
 }
-function isSameCompany(a: string, b: string) { if (!a || !b) return false; return a === b || a.includes(b) || b.includes(a); }
-function addMonths(d: Date, m: number) { const dt = new Date(d); dt.setMonth(dt.getMonth() + m); return dt; }
+function isSameCompany(a: string, b: string) {
+  if (!a || !b) return false;
+  return a === b || a.includes(b) || b.includes(a);
+}
+function addMonths(d: Date, m: number) {
+  const dt = new Date(d);
+  dt.setMonth(dt.getMonth() + m);
+  return dt;
+}
