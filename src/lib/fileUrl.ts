@@ -1,8 +1,11 @@
-export function fileUrl(u?: string | null) {
-  if (!u) return "#";
-  // If it's already an absolute URL (Vercel Blob), return as-is
-  if (/^https?:\/\//i.test(u)) return u;
-  // Legacy local paths like "/uploads/xyz.pdf" need a site prefix in production
-  const base = process.env.NEXT_PUBLIC_SITE_URL || "";
-  return base.replace(/\/$/, "") + u;
+export function fileUrl(url: string | null | undefined) {
+  if (!url) return "#";
+  // If it's already an absolute Blob URL, just return it
+  if (url.startsWith("http")) return url;
+
+  // Otherwise it's a relative path like "/uploads/..."
+  const base =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    (typeof window !== "undefined" ? window.location.origin : "");
+  return `${base}${url}`;
 }
