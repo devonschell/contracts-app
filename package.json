@@ -10,6 +10,7 @@
     "postinstall": "prisma generate"
   },
   "dependencies": {
+    "@aws-sdk/client-textract": "^3.913.0",
     "@clerk/nextjs": "^6.31.9",
     "@prisma/client": "^6.15.0",
     "@radix-ui/react-avatar": "^1.1.10",
