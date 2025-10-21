@@ -7,20 +7,22 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 const pexecFile = promisify(execFile);
 
-// AWS SDK v3
+// AWS SDK (used only when available)
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import {
   TextractClient,
   StartDocumentTextDetectionCommand,
   GetDocumentTextDetectionCommand,
-  Block,
 } from "@aws-sdk/client-textract";
-import {
-  S3Client,
-  PutObjectCommand,
-  DeleteObjectCommand,
-} from "@aws-sdk/client-s3";
 
 export type ExtractOpts = { allowOCR?: boolean; ocrPages?: number; ocrDPI?: number };
+
+function onVercel() {
+  return !!process.env.VERCEL;
+}
+function hasAwsCreds() {
+  return !!(process.env.AWS_REGION && process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+}
 
 export async function extractTextFromBuffer(
   buffer: Buffer,
@@ -30,7 +32,7 @@ export async function extractTextFromBuffer(
   const kind = detectKind(buffer, originalName);
 
   if (kind === "pdf") {
-    // 1) pdf-parse
+    // 1) Try pdf-parse (works for digital PDFs)
     try {
       const pdfParse = (await import("pdf-parse")).default;
       const { text } = await pdfParse(buffer);
@@ -38,7 +40,7 @@ export async function extractTextFromBuffer(
       if (t.length > 40) return t;
     } catch {}
 
-    // 2) pdfjs-dist
+    // 2) Try pdfjs (sometimes extracts when pdf-parse can't)
     try {
       const pdfjsLib: any = await import("pdfjs-dist/legacy/build/pdf.js");
       const loadingTask = pdfjsLib.getDocument({ data: buffer });
@@ -55,19 +57,10 @@ export async function extractTextFromBuffer(
       if (t.length > 40) return t;
     } catch {}
 
-    // 3) Hosted fallback: AWS Textract (works on Vercel)
-    const hasAws =
-      !!process.env.AWS_ACCESS_KEY_ID &&
-      !!process.env.AWS_SECRET_ACCESS_KEY &&
-      !!process.env.AWS_REGION &&
-      !!process.env.S3_BUCKET;
-
-    if (hasAws) {
+    // 3) If on Vercel (or AWS creds exist), use AWS Textract (async for PDFs)
+    if (hasAwsCreds()) {
       try {
-        const t = await ocrPdfWithTextract(buffer, {
-          region: process.env.AWS_REGION!,
-          bucket: process.env.S3_BUCKET!,
-        });
+        const t = await ocrPdfTextract(buffer, originalName);
         const cleaned = tidy(t);
         if (cleaned.length > 20) return cleaned;
       } catch (e: any) {
@@ -75,8 +68,8 @@ export async function extractTextFromBuffer(
       }
     }
 
-    // 4) Local CLI OCR (works locally, not on Vercel)
-    if (opts.allowOCR) {
+    // 4) Local-only CLI OCR fallback (Poppler + Tesseract). Not available on Vercel.
+    if (!onVercel() && opts.allowOCR) {
       try {
         const t = await ocrPdfCLI(buffer, {
           pages: Math.max(1, Math.min(opts.ocrPages ?? 3, 10)),
@@ -88,6 +81,7 @@ export async function extractTextFromBuffer(
         console.warn("[extractText][OCR-CLI] failed:", e?.message || e);
       }
     }
+
     return "";
   }
 
@@ -107,72 +101,61 @@ export async function extractTextFromBuffer(
   return looksTextual(guess) ? tidy(guess) : "";
 }
 
-/* ---------- AWS Textract fallback ---------- */
-async function ocrPdfWithTextract(
-  buffer: Buffer,
-  cfg: { region: string; bucket: string }
-) {
-  const s3 = new S3Client({ region: cfg.region });
-  const textract = new TextractClient({ region: cfg.region });
+/* ---------- Textract OCR for PDFs (uploads PDF to S3, polls result) ---------- */
+async function ocrPdfTextract(buffer: Buffer, originalName: string) {
+  const region = process.env.AWS_REGION!;
+  const bucket = process.env.S3_BUCKET!;
+  const prefix = (process.env.S3_PREFIX || "uploads").replace(/^\/|\/$/g, "");
+  if (!region || !bucket) throw new Error("Missing AWS_REGION or S3_BUCKET env vars");
 
-  const key = `ocr-tmp/${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`;
+  const s3 = new S3Client({ region });
+  const textract = new TextractClient({ region });
 
-  // 1) upload temp object to S3
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: cfg.bucket,
-      Key: key,
-      Body: buffer,
-      ContentType: "application/pdf",
-    })
-  );
+  // Put the PDF into S3
+  const key = `${prefix}/${Date.now()}-${randomId(8)}-${sanitizeName(originalName || "upload")}.pdf`;
+  await s3.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: buffer,
+    ContentType: "application/pdf",
+  }));
 
-  try {
-    // 2) start async text detection
-    const start = await textract.send(
-      new StartDocumentTextDetectionCommand({
-        DocumentLocation: { S3Object: { Bucket: cfg.bucket, Name: key } },
-      })
-    );
-    const jobId = start.JobId!;
-    let status = "IN_PROGRESS";
-    let nextToken: string | undefined;
-    const lines: string[] = [];
+  // Start async text detection
+  const start = await textract.send(new StartDocumentTextDetectionCommand({
+    DocumentLocation: { S3Object: { Bucket: bucket, Name: key } },
+  }));
 
-    // 3) poll results
-    while (status === "IN_PROGRESS") {
-      await sleep(2000);
-      const resp = await textract.send(
-        new GetDocumentTextDetectionCommand({ JobId: jobId, NextToken: nextToken })
-      );
-      status = resp.JobStatus || "IN_PROGRESS";
-      nextToken = resp.NextToken;
-
-      if (resp.Blocks) {
-        for (const b of resp.Blocks as Block[]) {
+  const jobId = start.JobId!;
+  // Poll until SUCCEEDED (or FAILED)
+  let status = "IN_PROGRESS";
+  const lines: string[] = [];
+  while (status === "IN_PROGRESS") {
+    await sleep(1500);
+    const res = await textract.send(new GetDocumentTextDetectionCommand({ JobId: jobId }));
+    status = res.JobStatus || "FAILED";
+    if (res.Blocks) {
+      for (const b of res.Blocks) {
+        if (b.BlockType === "LINE" && b.Text) lines.push(b.Text);
+      }
+    }
+    // handle pagination
+    let next = res.NextToken;
+    while (next && status === "SUCCEEDED") {
+      const more = await textract.send(new GetDocumentTextDetectionCommand({ JobId: jobId, NextToken: next }));
+      if (more.Blocks) {
+        for (const b of more.Blocks) {
           if (b.BlockType === "LINE" && b.Text) lines.push(b.Text);
         }
       }
-
-      if (!nextToken && (status === "SUCCEEDED" || status === "FAILED" || status === "PARTIAL_SUCCESS")) {
-        break;
-      }
+      next = more.NextToken;
     }
-
-    if (status !== "SUCCEEDED" && status !== "PARTIAL_SUCCESS") {
-      throw new Error(`Textract job status: ${status}`);
-    }
-
-    return lines.join("\n");
-  } finally {
-    // 4) clean up temp object
-    try {
-      await s3.send(new DeleteObjectCommand({ Bucket: cfg.bucket, Key: key }));
-    } catch {}
   }
+
+  if (status !== "SUCCEEDED") throw new Error(`Textract job status=${status}`);
+  return lines.join("\n");
 }
 
-/* ---------- Local OCR via CLI (Poppler + Tesseract) ---------- */
+/* ---------- Local OCR helpers (CLI) ---------- */
 async function ocrPdfCLI(buffer: Buffer, opts: { pages: number; dpi: number }) {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "ocr-"));
   const pdfPath = path.join(tmpDir, "in.pdf");
@@ -180,14 +163,14 @@ async function ocrPdfCLI(buffer: Buffer, opts: { pages: number; dpi: number }) {
   const prefix = path.join(tmpDir, "page");
   const PATH = `${process.env.PATH || ""}:/opt/homebrew/bin:/usr/local/bin`;
 
-  // PDF -> PNG
+  // PDF -> PNGs
   await pexecFile(
     "pdftoppm",
     ["-png", "-r", String(opts.dpi), "-f", "1", "-l", String(opts.pages), pdfPath, prefix],
     { env: { ...process.env, PATH } }
   );
 
-  // OCR each page
+  // OCR each page to stdout
   let text = "";
   for (let p = 1; p <= opts.pages; p++) {
     const imgPath = `${prefix}-${p}.png`;
@@ -202,7 +185,9 @@ async function ocrPdfCLI(buffer: Buffer, opts: { pages: number; dpi: number }) {
     }
   }
 
-  try { await fs.rm(tmpDir, { recursive: true, force: true }); } catch {}
+  try {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  } catch {}
   return text;
 }
 
@@ -217,21 +202,24 @@ function detectKind(buffer: Buffer, originalName?: string) {
   if (ext === "txt") return "txt";
   return "unknown" as const;
 }
-function isPDF(buf: Buffer) {
-  return buf.length >= 5 && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46 && buf[4] === 0x2d;
-}
-function isDOCXZip(buf: Buffer) {
-  return buf.length >= 4 && buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04;
-}
+function isPDF(buf: Buffer) { return buf.length >= 5 && buf[0]===0x25&&buf[1]===0x50&&buf[2]===0x44&&buf[3]===0x46&&buf[4]===0x2d; }
+function isDOCXZip(buf: Buffer) { return buf.length >= 4 && buf[0]===0x50&&buf[1]===0x4b&&buf[2]===0x03&&buf[3]===0x04; }
 function tidy(s: string) {
   const clipped = (s || "").slice(0, 400_000);
   return clipped.replace(/\u0000/g, " ").replace(/\r/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 function looksTextual(s: string) {
   if (!s) return false;
-  const printable = s.split("").filter((c) => /[\x09\x0A\x0D\x20-\x7E]/.test(c)).length;
+  const printable = s.split("").filter(c => /[\x09\x0A\x0D\x20-\x7E]/.test(c)).length;
   return printable / s.length > 0.9;
 }
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
+function randomId(n = 8) {
+  const a = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let s = "";
+  for (let i = 0; i < n; i++) s += a[(Math.random() * a.length) | 0];
+  return s;
 }
+function sanitizeName(n: string) {
+  return n.replace(/[^a-z0-9._-]+/gi, "_");
+}
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
