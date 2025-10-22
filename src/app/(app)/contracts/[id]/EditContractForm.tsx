@@ -5,6 +5,14 @@ import { useRouter } from "next/navigation";
 
 type Status = "ACTIVE" | "REVIEW" | "TERMINATED";
 
+// ✅ Helper: normalize dates to noon UTC before saving
+function toUtcNoonIso(dateLike: string | Date | null | undefined) {
+  if (!dateLike) return null;
+  const d = new Date(dateLike);
+  d.setUTCHours(12, 0, 0, 0); // locks to noon UTC so you don’t lose a day
+  return d.toISOString();
+}
+
 export default function EditContractForm(props: {
   id: string;
   initial: {
@@ -47,16 +55,19 @@ export default function EditContractForm(props: {
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    // ✅ Normalize the date before sending
     const payload = {
       counterparty,
       title,
       status,
-      renewalDate: renewalDate || null,
+      renewalDate: toUtcNoonIso(renewalDate),
       monthlyFee: monthlyFee === "" ? null : Number(monthlyFee),
       lateFeePct: lateFeePct === "" ? null : Number(lateFeePct),
       renewalNoticeDays:
         renewalNoticeDays === "" ? null : Number(renewalNoticeDays),
-      termLengthMonths: termLengthMonths === "" ? null : Number(termLengthMonths),
+      termLengthMonths:
+        termLengthMonths === "" ? null : Number(termLengthMonths),
       autoRenew,
     };
 

@@ -23,6 +23,7 @@ const STR_FIELDS  = new Set(["title","counterparty","billingCadence","paymentCad
 const STATUS_ENUM = new Set(["ACTIVE","REVIEW","TERMINATED"]);
 
 /* ---------- parsers ---------- */
+// ✅ UPDATED: normalize all parsed dates to **noon UTC** instead of midnight
 function parseDateFlexible(v: any): { value: Date|null, invalid: boolean } {
   if (v == null || v === "") return { value: null, invalid: false };
   const s = String(v).trim();
@@ -31,7 +32,7 @@ function parseDateFlexible(v: any): { value: Date|null, invalid: boolean } {
   const mdy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (mdy) {
     const [, m, d, y] = mdy;
-    const dt = new Date(Date.UTC(+y, +m - 1, +d));
+    const dt = new Date(Date.UTC(+y, +m - 1, +d, 12, 0, 0, 0)); // noon UTC
     return isNaN(dt.valueOf()) ? { value: null, invalid: true } : { value: dt, invalid: false };
   }
 
@@ -39,15 +40,17 @@ function parseDateFlexible(v: any): { value: Date|null, invalid: boolean } {
   const ymd = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (ymd) {
     const [, y, m, d] = ymd;
-    const dt = new Date(Date.UTC(+y, +m - 1, +d));
+    const dt = new Date(Date.UTC(+y, +m - 1, +d, 12, 0, 0, 0)); // noon UTC
     return isNaN(dt.valueOf()) ? { value: null, invalid: true } : { value: dt, invalid: false };
   }
 
   // last resort
   const dt = new Date(s);
   if (isNaN(dt.valueOf())) return { value: null, invalid: true };
-  const utcOnly = new Date(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()));
-  return { value: utcOnly, invalid: false };
+
+  // ✅ Normalize arbitrary parsed date to noon UTC
+  const utcNoon = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate(), 12, 0, 0, 0));
+  return { value: utcNoon, invalid: false };
 }
 
 function toNumberBase(v: any): number|null {
@@ -185,6 +188,12 @@ async function handleUpdate(req: NextRequest, idFromParams?: string) {
   }
 }
 
-export async function PATCH(req: NextRequest, ctx: { params: { id?: string } }) { return handleUpdate(req, ctx?.params?.id); }
-export async function POST (req: NextRequest, ctx: { params: { id?: string } }) { return handleUpdate(req, ctx?.params?.id); }
-export async function PUT  (req: NextRequest, ctx: { params: { id?: string } }) { return handleUpdate(req, ctx?.params?.id); }
+export async function PATCH(req: NextRequest, ctx: { params: { id?: string } }) { 
+  return handleUpdate(req, ctx?.params?.id); 
+}
+export async function POST (req: NextRequest, ctx: { params: { id?: string } }) { 
+  return handleUpdate(req, ctx?.params?.id); 
+}
+export async function PUT  (req: NextRequest, ctx: { params: { id?: string } }) { 
+  return handleUpdate(req, ctx?.params?.id); 
+}
