@@ -24,7 +24,14 @@ export default function Sidebar() {
         bg-sidebar text-[color:var(--sidebar-foreground)]
       "
     >
-      <div className="p-4 text-lg font-semibold">YourLogo</div>
+      <div className="p-4">
+        <Link href="/" className="inline-block select-none">
+          <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-500 bg-clip-text text-transparent">
+            ClauseIQ
+          </span>
+        </Link>
+      </div>
+
       <nav className="flex flex-col gap-1 p-2">
         {nav.map((item) => {
           const active =

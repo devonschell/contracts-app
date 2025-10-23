@@ -7,18 +7,18 @@ export const dynamic = "force-dynamic";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-dvh bg-slate-50 text-slate-900">
-      <div className="flex min-h-dvh">
-        {/* Left rail */}
-        <aside className="sticky top-0 h-dvh w-60 shrink-0 border-r bg-white">
-          <Sidebar />
-        </aside>
+    <div className="min-h-screen flex bg-background text-foreground">
+      {/* Sidebar */}
+      <aside className="sticky top-0 h-screen w-64 shrink-0 border-r border-border bg-sidebar">
+        <Sidebar />
+      </aside>
 
-        {/* Main column */}
-        <main className="min-w-0 flex-1">
-          <Topbar />
-          <div className="px-8 py-6">
-            <div className="mx-auto max-w-6xl">{children}</div>
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col min-w-0">
+        <Topbar />
+        <main className="flex-1 p-6">
+          <div className="max-w-6xl mx-auto bg-card border border-border rounded-lg shadow-sm p-6">
+            {children}
           </div>
         </main>
       </div>
