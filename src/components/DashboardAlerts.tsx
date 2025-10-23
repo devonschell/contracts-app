@@ -28,16 +28,45 @@ export default function DashboardAlerts({
   defaultWindow?: "7" | "30" | "90" | "all";
 }) {
   const [win, setWin] = useState<"7" | "30" | "90" | "all">(defaultWindow);
+  const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
-    if (win === "all") return items;
-    if (win === "7") return items.filter((i) => i.bucket === "expired" || i.bucket === "7");
-    if (win === "30") return items.filter((i) => ["expired", "7", "30"].includes(i.bucket));
-    return items.filter((i) => ["expired", "7", "30", "90"].includes(i.bucket));
-  }, [items, win]);
+    let list =
+      win === "all"
+        ? items
+        : win === "7"
+        ? items.filter((i) => i.bucket === "expired" || i.bucket === "7")
+        : win === "30"
+        ? items.filter((i) => ["expired", "7", "30"].includes(i.bucket))
+        : items.filter((i) => ["expired", "7", "30", "90"].includes(i.bucket));
+
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      list = list.filter(
+        (c) =>
+          c.counterparty.toLowerCase().includes(q) ||
+          c.title.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [items, win, query]);
 
   return (
     <div className="rounded-lg border bg-white p-4 shadow-sm">
+      {/* SEARCH + VIEW ALL */}
+      <div className="flex items-center gap-3 mb-3">
+        <input
+          type="text"
+          placeholder="Search expiring contracts..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="input flex-1"
+        />
+        <Link href="/contracts" className="btn-primary whitespace-nowrap">
+          View All Contracts
+        </Link>
+      </div>
+
       {/* FILTER BUTTONS */}
       <div className="flex gap-2 pb-3">
         {(["7", "30", "90", "all"] as const).map((k) => {
@@ -58,7 +87,6 @@ export default function DashboardAlerts({
             </button>
           );
         })}
-
         <span className="ml-auto text-xs text-gray-500">
           {win === "7" && "Showing: Expired + 7 days"}
           {win === "30" && "Showing: Expired + 7 days + 30 days"}

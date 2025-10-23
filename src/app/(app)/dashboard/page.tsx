@@ -1,6 +1,5 @@
 import prisma from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
-import Link from "next/link";
 import DashboardPie, { type PieDatum } from "@/components/DashboardPie";
 import DashboardAlerts, { type AlertItem } from "@/components/DashboardAlerts";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
@@ -49,7 +48,6 @@ export default async function DashboardPage() {
       else if (cat === "7") due7 += 1;
       else if (cat === "30") due30 += 1;
       else if (cat === "90") due90 += 1;
-
       if (!cat) return null;
       return {
         id: c.id,
@@ -111,11 +109,7 @@ export default async function DashboardPage() {
               {[
                 { label: "Contracts", value: contracts.length },
                 { label: "30 days", value: expired + due7 + due30 },
-                {
-                  label: "60 days",
-                  value:
-                    expired + due7 + due30 + Math.min(due90, Math.max(0, due90)),
-                },
+                { label: "60 days", value: expired + due7 + due30 + due90 },
                 { label: "90 days", value: expired + due7 + due30 + due90 },
               ].map((item) => (
                 <div
@@ -131,28 +125,9 @@ export default async function DashboardPage() {
             </div>
           </CardContent>
         </Card>
-
-        {/* Quick Links */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Links</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col gap-3">
-              <Link href="/contracts" className="btn-outline text-center">
-                View all contracts
-              </Link>
-              <Link href="/upload" className="btn-outline text-center">
-                Upload new contract
-              </Link>
-              <Link href="/settings" className="btn-outline text-center">
-                Notification settings
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
+      {/* Alerts now contain the search + button */}
       <DashboardAlerts items={alertItems} colors={COLORS} defaultWindow="30" />
     </PageContainer>
   );
