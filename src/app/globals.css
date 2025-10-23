@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* -------------------------------------------------- */
+/* 🌗 Theme & Color Mapping                           */
+/* -------------------------------------------------- */
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -22,7 +25,7 @@
 }
 
 /* -------------------------------------------------- */
-/* 🩵 ClauseIQ Light Theme (Inspired by Instantly)    */
+/* 🩵 ClauseIQ Light Theme (Instantly-inspired)       */
 /* -------------------------------------------------- */
 :root {
   --radius: 0.625rem;
@@ -36,7 +39,7 @@
 
   --primary: #2563eb;
   --primary-foreground: #ffffff;
-  --accent: #6366f1;
+  --accent: #3b82f6;
   --accent-foreground: #ffffff;
 
   --secondary: #e0e7ff;
@@ -49,6 +52,7 @@
   --ring: #60a5fa;
 
   --destructive: #dc2626;
+
   --chart-1: #3b82f6;
   --chart-2: #6366f1;
   --chart-3: #22c55e;
@@ -59,7 +63,7 @@
   --sidebar-foreground: #1e293b;
   --sidebar-primary: #2563eb;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #e0e7ff;
+  --sidebar-accent: #f1f5f9;
   --sidebar-accent-foreground: #1e3a8a;
   --sidebar-border: #e2e8f0;
   --sidebar-ring: #60a5fa;
@@ -91,6 +95,7 @@
   --ring: #3b82f6;
 
   --destructive: #ef4444;
+
   --chart-1: #60a5fa;
   --chart-2: #818cf8;
   --chart-3: #22c55e;
@@ -108,19 +113,98 @@
 }
 
 /* -------------------------------------------------- */
-/* Base Layer                                         */
+/* 🧩 Base Layer & Defaults                           */
 /* -------------------------------------------------- */
 @layer base {
   * {
     @apply border-border focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)];
   }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  h1 {
+    @apply text-2xl font-semibold tracking-tight text-foreground;
+  }
+
+  h2 {
+    @apply text-lg font-semibold tracking-tight text-foreground;
+  }
+
+  h3 {
+    @apply text-base font-medium text-[color:var(--muted-foreground)];
+  }
+
+  p {
+    @apply text-[15px] leading-relaxed text-foreground/90;
+  }
+
+  a {
+    @apply text-[color:var(--primary)] hover:text-blue-700 underline;
   }
 }
 
 /* -------------------------------------------------- */
-/* Clickability safeguards                            */
+/* 🧠 Utilities (No unknown utilities anymore)        */
+/* -------------------------------------------------- */
+@layer utilities {
+  /* Text utilities */
+  .text-muted-foreground {
+    color: var(--muted-foreground);
+  }
+
+  .text-primary {
+    color: var(--primary);
+  }
+
+  .text-foreground {
+    color: var(--foreground);
+  }
+
+  .bg-card {
+    background-color: var(--card);
+  }
+
+  .muted {
+    @apply text-muted-foreground;
+  }
+
+  /* Headings */
+  .h1 {
+    @apply text-2xl font-semibold tracking-tight text-foreground;
+  }
+
+  .h2 {
+    @apply text-base font-semibold tracking-tight text-foreground;
+  }
+
+  .h3 {
+    @apply text-sm font-medium text-muted-foreground;
+  }
+
+  /* Layout helpers */
+  .card-grid {
+    @apply grid gap-4 md:grid-cols-3;
+  }
+
+  /* Buttons */
+  .btn-primary {
+    @apply bg-primary text-white font-medium px-4 py-2 rounded-md hover:bg-blue-700 transition-colors;
+  }
+
+  .btn-outline {
+    @apply border border-border text-foreground px-4 py-2 rounded-md hover:bg-muted transition-colors;
+  }
+
+  /* Inputs */
+  .input {
+    @apply border border-input bg-white rounded-md px-3 py-2 text-sm text-foreground focus:ring-2 focus:ring-blue-500 focus:outline-none;
+  }
+}
+
+/* -------------------------------------------------- */
+/* ⚙️ Layout & Clickability                         */
 /* -------------------------------------------------- */
 main {
   position: relative;
@@ -132,4 +216,19 @@ button,
 [role="button"],
 .cursor-pointer {
   cursor: pointer;
+}
+
+/* -------------------------------------------------- */
+/* 🌐 Scrollbar Polish                               */
+/* -------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }

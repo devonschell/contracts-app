@@ -1,4 +1,3 @@
-// src/components/Sidebar.tsx
 "use client";
 
 import Link from "next/link";
@@ -41,10 +40,10 @@ export default function Sidebar() {
               key={item.href}
               href={item.href}
               className={clsx(
-                "rounded-md px-3 py-2 text-sm transition-colors",
+                "rounded-md px-3 py-2 text-sm font-medium transition-colors",
                 active
-                  ? "bg-primary text-[color:var(--sidebar-primary-foreground)]"
-                  : "text-foreground/70 hover:bg-accent/10"
+                  ? "bg-blue-100 text-black"
+                  : "text-gray-700 hover:bg-gray-100 hover:text-black"
               )}
             >
               {item.name}
