@@ -1,17 +1,17 @@
-import * as React from "react"
-import { cn } from "@/lib/utils"
+import * as React from "react";
+import { cn } from "@/lib/utils";
 
 function Card({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card"
       className={cn(
-        "bg-card text-card-foreground flex flex-col rounded-xl border border-border shadow-md hover:shadow-lg transition-all duration-200",
+        "bg-card text-card-foreground flex flex-col rounded-xl border border-border shadow-sm transition-colors",
         className
       )}
       {...props}
     />
-  )
+  );
 }
 
 function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
@@ -19,22 +19,22 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-header"
       className={cn(
-        "px-5 pt-4 pb-2 border-b border-border flex items-center justify-between",
+        "px-6 py-3 border-b border-border flex items-center justify-between",
         className
       )}
       {...props}
     />
-  )
+  );
 }
 
 function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <h3
       data-slot="card-title"
-      className={cn("text-base font-semibold text-foreground", className)}
+      className={cn("text-sm font-semibold text-foreground", className)}
       {...props}
     />
-  )
+  );
 }
 
 function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
@@ -44,7 +44,7 @@ function CardDescription({ className, ...props }: React.ComponentProps<"div">) {
       className={cn("text-sm text-muted-foreground", className)}
       {...props}
     />
-  )
+  );
 }
 
 function CardAction({ className, ...props }: React.ComponentProps<"div">) {
@@ -54,23 +54,27 @@ function CardAction({ className, ...props }: React.ComponentProps<"div">) {
       className={cn("justify-self-end", className)}
       {...props}
     />
-  )
+  );
 }
 
 function CardContent({ className, ...props }: React.ComponentProps<"div">) {
+  // Default = roomier (p-6). Use className="p-4" on small cards (e.g., Alerts).
   return (
-    <div data-slot="card-content" className={cn("p-5 space-y-3", className)} {...props} />
-  )
+    <div data-slot="card-content" className={cn("p-6", className)} {...props} />
+  );
 }
 
 function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-footer"
-      className={cn("px-5 py-3 border-t border-border flex items-center justify-end", className)}
+      className={cn(
+        "px-6 py-4 border-t border-border flex items-center justify-end",
+        className
+      )}
       {...props}
     />
-  )
+  );
 }
 
 export {
@@ -81,4 +85,4 @@ export {
   CardAction,
   CardDescription,
   CardContent,
-}
+};
