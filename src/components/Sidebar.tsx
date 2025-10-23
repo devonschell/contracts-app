@@ -18,10 +18,10 @@ export default function Sidebar() {
   return (
     <aside
       className="
-        sticky top-0
+        sticky top-0 z-40
         h-[100dvh] w-64 shrink-0
-        border-r bg-white
-        z-40
+        border-r border-border
+        bg-sidebar text-[color:var(--sidebar-foreground)]
       "
     >
       <div className="p-4 text-lg font-semibold">YourLogo</div>
@@ -34,10 +34,10 @@ export default function Sidebar() {
               key={item.href}
               href={item.href}
               className={clsx(
-                "rounded-md px-3 py-2 text-sm",
+                "rounded-md px-3 py-2 text-sm transition-colors",
                 active
-                  ? "bg-black text-white"
-                  : "text-gray-700 hover:bg-gray-100"
+                  ? "bg-primary text-[color:var(--sidebar-primary-foreground)]"
+                  : "text-foreground/70 hover:bg-accent/10"
               )}
             >
               {item.name}
