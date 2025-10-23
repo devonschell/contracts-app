@@ -4,6 +4,7 @@ import Link from "next/link";
 import DashboardPie, { type PieDatum } from "@/components/DashboardPie";
 import DashboardAlerts, { type AlertItem } from "@/components/DashboardAlerts";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
+import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
 
@@ -68,9 +69,10 @@ export default async function DashboardPage() {
   ].filter((d) => d.value > 0);
 
   return (
-    <div className="space-y-6">
-      <h1 className="h1">Dashboard</h1>
-
+    <PageContainer
+      title="Dashboard"
+      description="Overview of your contracts, renewals, and alerts."
+    >
       <div className="card-grid">
         {/* Renewal Risk Mix */}
         <Card>
@@ -111,7 +113,8 @@ export default async function DashboardPage() {
                 { label: "30 days", value: expired + due7 + due30 },
                 {
                   label: "60 days",
-                  value: expired + due7 + due30 + Math.min(due90, Math.max(0, due90)),
+                  value:
+                    expired + due7 + due30 + Math.min(due90, Math.max(0, due90)),
                 },
                 { label: "90 days", value: expired + due7 + due30 + due90 },
               ].map((item) => (
@@ -135,16 +138,22 @@ export default async function DashboardPage() {
             <CardTitle>Quick Links</CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="text-sm space-y-2">
-              <li><Link href="/contracts" className="link">View all contracts</Link></li>
-              <li><Link href="/upload" className="link">Upload new contract</Link></li>
-              <li><Link href="/settings" className="link">Notification settings</Link></li>
-            </ul>
+            <div className="flex flex-col gap-3">
+              <Link href="/contracts" className="btn-outline text-center">
+                View all contracts
+              </Link>
+              <Link href="/upload" className="btn-outline text-center">
+                Upload new contract
+              </Link>
+              <Link href="/settings" className="btn-outline text-center">
+                Notification settings
+              </Link>
+            </div>
           </CardContent>
         </Card>
       </div>
 
       <DashboardAlerts items={alertItems} colors={COLORS} defaultWindow="30" />
-    </div>
+    </PageContainer>
   );
 }

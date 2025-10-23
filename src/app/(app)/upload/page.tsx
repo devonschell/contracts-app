@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import PageContainer from "@/components/PageContainer";
 
 type QueueItem = {
   file: File;
@@ -43,7 +44,6 @@ export default function UploadPage() {
   const startUploadAll = async () => {
     if (queue.length === 0) return alert("Choose one or more contract files first.");
 
-    // Upload sequentially (simple & reliable for large files)
     for (let i = 0; i < queue.length; i++) {
       const item = queue[i];
       if (item.status === "done") continue;
@@ -56,7 +56,6 @@ export default function UploadPage() {
 
       try {
         const form = new FormData();
-        // Let the server create the contract automatically (no contractId field)
         form.append("file", item.file);
 
         const xhr = new XMLHttpRequest();
@@ -72,7 +71,12 @@ export default function UploadPage() {
           try {
             const json = JSON.parse(xhr.responseText || "{}");
             if (xhr.status >= 200 && xhr.status < 300 && json?.ok) {
-              updateQueue(i, { status: "done", progress: 100, message: "Upload complete.", contractId: json.contractId });
+              updateQueue(i, {
+                status: "done",
+                progress: 100,
+                message: "Upload complete.",
+                contractId: json.contractId,
+              });
             } else {
               const reason = json?.error || json?.message || "Unknown error";
               updateQueue(i, { status: "error", message: `Upload failed: ${reason}` });
@@ -99,7 +103,6 @@ export default function UploadPage() {
       }
     }
 
-    // After all uploads are started/finished, go to contracts list
     window.location.href = "/contracts";
   };
 
@@ -112,88 +115,89 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] bg-white">
-      {/* Top header */}
-      <div className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-6xl px-6 py-4">
-          <h1 className="text-lg font-semibold tracking-tight text-slate-900">
-            Contract Intelligence
-          </h1>
-        </div>
+    <PageContainer
+      title="Upload Contracts"
+      description="Add new contracts to ClauseIQ for analysis and tracking."
+    >
+      {/* Drag & drop zone */}
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "copy";
+        }}
+        onDrop={onDrop}
+        className="rounded-xl border-2 border-dashed border-border bg-card p-10 text-center text-muted-foreground"
+      >
+        <p className="mb-2 text-base font-medium text-foreground">
+          Drag &amp; drop contracts here (PDF/DOCX), or{" "}
+          <button
+            onClick={doBrowse}
+            className="text-primary underline underline-offset-4 hover:no-underline"
+          >
+            browse
+          </button>
+        </p>
+        <p className="text-sm opacity-80">Drop multiple files to import in a batch.</p>
+
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept=".pdf,.doc,.docx,.txt"
+          className="hidden"
+          onChange={(e) => onFilesChosen(e.target.files)}
+        />
       </div>
 
-      <div className="mx-auto max-w-6xl px-6 py-8">
-        {/* Drag & drop zone */}
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = "copy";
-          }}
-          onDrop={onDrop}
-          className="rounded-xl border-2 border-dashed border-slate-300 bg-white p-10 text-center text-slate-600"
-        >
-          <p className="mb-2 text-base font-medium">
-            Drag &amp; drop contracts here (PDF/DOCX), or{" "}
-            <button onClick={doBrowse} className="underline underline-offset-4 hover:no-underline">
-              browse
-            </button>
-          </p>
-          <p className="text-sm opacity-80">Drop multiple files to import in a batch.</p>
-
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            accept=".pdf,.doc,.docx,.txt"
-            className="hidden"
-            onChange={(e) => onFilesChosen(e.target.files)}
-          />
+      {/* Upload queue */}
+      <div className="mt-8 rounded-lg border border-border bg-card shadow-sm">
+        <div className="border-b border-border px-4 py-3">
+          <h2 className="text-sm font-semibold text-foreground">Upload Queue</h2>
         </div>
 
-        {/* Upload queue */}
-        <div className="mt-6 rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-4 py-3">
-            <h2 className="text-sm font-semibold text-slate-800">Upload queue</h2>
-          </div>
-
-          <div className="px-4 py-4 space-y-4">
-            {queue.length === 0 ? (
-              <p className="text-sm text-slate-500">No files selected.</p>
-            ) : (
-              <>
-                {queue.map((item, i) => (
-                  <div key={i} className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-slate-900">{item.file.name}</div>
-                      <div className="text-xs text-slate-500">{item.sizeLabel}</div>
-                      <div className="mt-3 h-2 w-64 overflow-hidden rounded-full bg-slate-200">
-                        <div
-                          className={`h-2 rounded-full transition-all ${
-                            item.status === "error" ? "bg-red-500" : "bg-slate-800"
-                          }`}
-                          style={{ width: `${item.progress}%` }}
-                        />
-                      </div>
-                      <div className="mt-2 text-xs text-slate-600">{statusLabel(item)}</div>
+        <div className="px-4 py-4 space-y-4">
+          {queue.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No files selected.</p>
+          ) : (
+            <>
+              {queue.map((item, i) => (
+                <div key={i} className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-foreground">
+                      {item.file.name}
+                    </div>
+                    <div className="text-xs text-muted-foreground">{item.sizeLabel}</div>
+                    <div className="mt-3 h-2 w-64 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={`h-2 rounded-full transition-all ${
+                          item.status === "error"
+                            ? "bg-destructive"
+                            : "bg-primary"
+                        }`}
+                        style={{ width: `${item.progress}%` }}
+                      />
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      {statusLabel(item)}
                     </div>
                   </div>
-                ))}
-
-                <div className="pt-2">
-                  <button
-                    onClick={startUploadAll}
-                    disabled={uploading || queue.every((q) => q.status === "done")}
-                    className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {uploading ? "Uploading..." : "Upload & Create"}
-                  </button>
                 </div>
-              </>
-            )}
-          </div>
+              ))}
+
+              <div className="pt-2">
+                <button
+                  onClick={startUploadAll}
+                  disabled={uploading || queue.every((q) => q.status === "done")}
+                  className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {uploading ? "Uploading..." : "Upload & Create"}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }
 
