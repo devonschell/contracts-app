@@ -2,7 +2,7 @@ import prisma from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import DashboardPie, { type PieDatum } from "@/components/DashboardPie";
 import DashboardAlerts, { type AlertItem } from "@/components/DashboardAlerts";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/Card";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
