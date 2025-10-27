@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 
 export default function HomeLandingClient() {
   return (
     <main className="min-h-screen bg-white text-slate-900 flex flex-col">
       {/* ----- Header ----- */}
-      <header className="w-full border-b border-slate-200 bg-white">
+      <header className="w-full border-b border-slate-200 bg-white/80 backdrop-blur-md sticky top-0 z-20">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-6 py-4">
           <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-500 bg-clip-text text-transparent">
             ClauseIQ
@@ -47,11 +48,16 @@ export default function HomeLandingClient() {
         >
           Get Started Free
         </Link>
-        <div className="mt-14 w-full max-w-4xl">
-          <img
+
+        {/* Screenshot */}
+        <div className="mt-16 w-full max-w-5xl">
+          <Image
             src="/dashboard-preview.png"
             alt="ClauseIQ Dashboard Preview"
-            className="w-full rounded-xl shadow-lg border border-slate-200"
+            width={1200}
+            height={700}
+            className="w-full rounded-xl shadow-2xl border border-slate-200"
+            priority
           />
         </div>
       </section>
@@ -63,33 +69,35 @@ export default function HomeLandingClient() {
             Turn every contract into actionable insight
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12 text-left">
-            <div>
-              <h4 className="text-xl font-semibold mb-2 text-slate-900">
-                Upload
-              </h4>
-              <p className="text-slate-600">
-                Drag & drop or forward contracts. ClauseIQ automatically reads,
-                extracts, and stores key details.
-              </p>
-            </div>
-            <div>
-              <h4 className="text-xl font-semibold mb-2 text-slate-900">
-                Summarize
-              </h4>
-              <p className="text-slate-600">
-                Instantly see the who, when, and what — from payment terms to
-                renewal dates — summarized by AI.
-              </p>
-            </div>
-            <div>
-              <h4 className="text-xl font-semibold mb-2 text-slate-900">
-                Track
-              </h4>
-              <p className="text-slate-600">
-                View all upcoming renewals on your dashboard and get notified 30,
-                15, 7, and 1 day before they’re due.
-              </p>
-            </div>
+            {[
+              {
+                title: "Upload",
+                desc: "Drag & drop or forward contracts. ClauseIQ automatically reads, extracts, and stores key details.",
+                img: "/upload-preview.png",
+              },
+              {
+                title: "Summarize",
+                desc: "Instantly see the who, when, and what — from payment terms to renewal dates — summarized by AI.",
+                img: "/summary-preview.png",
+              },
+              {
+                title: "Track",
+                desc: "View all upcoming renewals on your dashboard and get notified 30, 15, 7, and 1 day before they’re due.",
+                img: "/contracts-preview.png",
+              },
+            ].map((f) => (
+              <div key={f.title} className="space-y-4 hover:scale-[1.02] transition-transform duration-300">
+                <Image
+                  src={f.img}
+                  alt={`${f.title} preview`}
+                  width={400}
+                  height={250}
+                  className="rounded-lg border border-slate-200 shadow-sm w-full"
+                />
+                <h4 className="text-xl font-semibold text-slate-900">{f.title}</h4>
+                <p className="text-slate-600">{f.desc}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -107,39 +115,28 @@ export default function HomeLandingClient() {
             Pay only for what you need. Start free — upgrade when you’re ready.
           </p>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-            <div className="border border-slate-200 rounded-xl p-8 bg-white shadow-sm">
-              <h4 className="text-xl font-semibold mb-2">Starter</h4>
-              <p className="text-slate-500 mb-6">Up to 50 contracts</p>
-              <div className="text-4xl font-bold mb-6">$39/mo</div>
-              <Link
-                href="/signup"
-                className="bg-blue-600 hover:bg-indigo-600 text-white font-medium rounded-md px-4 py-2 text-sm transition"
+            {[
+              { name: "Starter", contracts: 50, price: 39 },
+              { name: "Growth", contracts: 250, price: 99 },
+              { name: "Pro", contracts: 1000, price: 249 },
+            ].map((tier) => (
+              <div
+                key={tier.name}
+                className="border border-slate-200 rounded-xl p-8 bg-white shadow-sm hover:shadow-md transition"
               >
-                Start Free
-              </Link>
-            </div>
-            <div className="border border-slate-200 rounded-xl p-8 bg-white shadow-sm">
-              <h4 className="text-xl font-semibold mb-2">Growth</h4>
-              <p className="text-slate-500 mb-6">Up to 250 contracts</p>
-              <div className="text-4xl font-bold mb-6">$99/mo</div>
-              <Link
-                href="/signup"
-                className="bg-blue-600 hover:bg-indigo-600 text-white font-medium rounded-md px-4 py-2 text-sm transition"
-              >
-                Start Free
-              </Link>
-            </div>
-            <div className="border border-slate-200 rounded-xl p-8 bg-white shadow-sm">
-              <h4 className="text-xl font-semibold mb-2">Pro</h4>
-              <p className="text-slate-500 mb-6">Up to 1,000 contracts</p>
-              <div className="text-4xl font-bold mb-6">$249/mo</div>
-              <Link
-                href="/signup"
-                className="bg-blue-600 hover:bg-indigo-600 text-white font-medium rounded-md px-4 py-2 text-sm transition"
-              >
-                Start Free
-              </Link>
-            </div>
+                <h4 className="text-xl font-semibold mb-2">{tier.name}</h4>
+                <p className="text-slate-500 mb-6">
+                  Up to {tier.contracts.toLocaleString()} contracts
+                </p>
+                <div className="text-4xl font-bold mb-6">${tier.price}/mo</div>
+                <Link
+                  href="/signup"
+                  className="bg-blue-600 hover:bg-indigo-600 text-white font-medium rounded-md px-4 py-2 text-sm transition"
+                >
+                  Start Free
+                </Link>
+              </div>
+            ))}
           </div>
         </div>
       </section>

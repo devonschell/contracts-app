@@ -28,12 +28,13 @@ export default async function ContractDetail({
       uploads: { orderBy: { createdAt: "desc" }, take: 50 },
     },
   });
+
   if (!c) return <div className="p-6">Not found.</div>;
   const isDeleted = !!c.deletedAt;
 
-  // JSON → arrays
   const toStrArray = (v: unknown): string[] =>
     Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+
   const unusualClauses = toStrArray((c as any).unusualClauses);
   const terminationRights = toStrArray((c as any).terminationRights);
 
@@ -53,6 +54,7 @@ export default async function ContractDetail({
       title={c.title || c.currentUpload?.originalName || "Untitled Contract"}
       description="Contract Intelligence Overview"
     >
+      {/* Header Section */}
       <div className="mb-6 flex items-center justify-between">
         <div className="space-y-1">
           <div className="text-sm text-muted-foreground">
@@ -68,13 +70,28 @@ export default async function ContractDetail({
           </div>
         </div>
 
-        <Link href="/contracts" className="btn-secondary text-sm">
-          ← Back to Contracts
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link href="/contracts" className="btn-secondary text-sm">
+            ← Back to Contracts
+          </Link>
+          {!isDeleted && (
+            <button
+              className="text-red-600 text-sm hover:underline"
+              onClick={() =>
+                fetch(`/api/contracts/${c.id}/delete`, { method: "POST" }).then(
+                  () => location.reload()
+                )
+              }
+            >
+              Delete
+            </button>
+          )}
+        </div>
       </div>
 
+      {/* Main Content Grid */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Main */}
+        {/* Left Column */}
         <div className="space-y-6 lg:col-span-2">
           {/* Details */}
           <Card title="Details">
@@ -87,7 +104,6 @@ export default async function ContractDetail({
                   value={c.counterparty ?? ""}
                 />
               </Labeled>
-
               <Labeled label="Status">
                 <InlineField
                   type="select"
@@ -245,12 +261,10 @@ export default async function ContractDetail({
           {/* Current file */}
           <Card title="Current file">
             <div className="flex items-center justify-between p-2">
-              <div>
-                <div className="text-sm text-foreground">
-                  {c.currentUpload
-                    ? c.currentUpload.originalName
-                    : "No file yet"}
-                </div>
+              <div className="text-sm text-foreground">
+                {c.currentUpload
+                  ? c.currentUpload.originalName
+                  : "No file yet"}
               </div>
               <div className="flex gap-2">
                 {c.currentUpload && (
@@ -288,11 +302,7 @@ export default async function ContractDetail({
                         {fmtDateTime(u.createdAt)}
                       </div>
                     </div>
-                    <a
-                      href={u.url}
-                      download
-                      className="btn-tertiary text-xs"
-                    >
+                    <a href={u.url} download className="btn-tertiary text-xs">
                       Download
                     </a>
                   </div>
@@ -302,17 +312,10 @@ export default async function ContractDetail({
           </Card>
         </div>
 
-        {/* Side actions */}
+        {/* Side actions (cleaned up) */}
         <aside className="space-y-4">
           <Card title="Actions">
             <ContractActions contractId={c.id} isDeleted={isDeleted} />
-          </Card>
-
-          <Card title="Renewal status">
-            {renderRenewalBadge(
-              c.renewalDate,
-              c.renewalNoticeDays ?? undefined
-            )}
           </Card>
         </aside>
       </div>
@@ -407,29 +410,4 @@ function fmtDateTime(d: Date | string) {
 function money(v?: number | null) {
   if (v == null || isNaN(Number(v))) return "—";
   return `$${Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-}
-
-function renderRenewalBadge(date: Date | string | null, noticeDays?: number) {
-  if (!date)
-    return <span className="text-muted-foreground">No renewal date set.</span>;
-  const dt = typeof date === "string" ? new Date(date) : date;
-  if (isNaN(dt.getTime()))
-    return <span className="text-muted-foreground">Invalid date.</span>;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diffDays = Math.round((dt.getTime() - today.getTime()) / 86400000);
-  const windowDays = noticeDays && noticeDays > 0 ? noticeDays : 30;
-  if (diffDays < 0)
-    return (
-      <span className="text-destructive">
-        Overdue • {dt.toLocaleDateString()}
-      </span>
-    );
-  if (diffDays <= windowDays)
-    return (
-      <span className="text-amber-700">
-        Due in {diffDays}d • {dt.toLocaleDateString()}
-      </span>
-    );
-  return <span className="text-muted-foreground">{dt.toLocaleDateString()}</span>;
 }

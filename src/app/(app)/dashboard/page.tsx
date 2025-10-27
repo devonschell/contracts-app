@@ -71,9 +71,9 @@ export default async function DashboardPage() {
       title="Dashboard"
       description="Overview of your contracts, renewals, and alerts."
     >
-      <div className="card-grid">
+      <div className="space-y-6">
         {/* Renewal Risk Mix */}
-        <Card>
+        <Card className="shadow-sm">
           <CardHeader>
             <CardTitle>Renewal Risk Mix</CardTitle>
           </CardHeader>
@@ -100,7 +100,7 @@ export default async function DashboardPage() {
         </Card>
 
         {/* Totals */}
-        <Card>
+        <Card className="shadow-sm">
           <CardHeader>
             <CardTitle>Totals</CardTitle>
           </CardHeader>
@@ -125,10 +125,10 @@ export default async function DashboardPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
 
-      {/* Alerts now contain the search + button */}
-      <DashboardAlerts items={alertItems} colors={COLORS} defaultWindow="30" />
+        {/* Alerts + Search */}
+        <DashboardAlerts items={alertItems} colors={COLORS} defaultWindow="30" />
+      </div>
     </PageContainer>
   );
 }
