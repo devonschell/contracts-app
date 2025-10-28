@@ -277,6 +277,20 @@
     border-color: var(--ring);
     box-shadow: 0 0 0 2px var(--ring);
   }
+
+  /* -------------------------------------------------- */
+  /* 🖱️ Always show hand cursor for clickable UI        */
+  /* -------------------------------------------------- */
+  button,
+  [role="button"],
+  .btn-primary,
+  .btn-secondary,
+  .btn-outline,
+  .btn-tertiary,
+  label[for],
+  .clickable {
+    cursor: pointer;
+  }
 }
 
 /* -------------------------------------------------- */
@@ -319,8 +333,4 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
-}
-/* Always show hand cursor for clickable UI */
-@layer utilities {
-  .clickable { cursor: pointer; }
 }
