@@ -6,6 +6,7 @@ import ContractActions from "@/components/ContractActions";
 import InlineField from "@/components/InlineField";
 import AiPanel from "./AiPanel";
 import PageContainer from "@/components/PageContainer";
+import DeleteContractButton from "@/components/DeleteContractButton";
 
 export const dynamic = "force-dynamic";
 
