@@ -2,7 +2,6 @@ import { auth } from "@clerk/nextjs/server";
 import prisma from "@/lib/prisma";
 import Link from "next/link";
 import ReplaceUploadButton from "@/components/ReplaceUploadButton";
-import ContractActions from "@/components/ContractActions";
 import InlineField from "@/components/InlineField";
 import AiPanel from "./AiPanel";
 import PageContainer from "@/components/PageContainer";
@@ -75,18 +74,7 @@ export default async function ContractDetail({
           <Link href="/contracts" className="btn-secondary text-sm">
             ← Back to Contracts
           </Link>
-          {!isDeleted && (
-            <button
-              className="text-red-600 text-sm hover:underline"
-              onClick={() =>
-                fetch(`/api/contracts/${c.id}/delete`, { method: "POST" }).then(
-                  () => location.reload()
-                )
-              }
-            >
-              Delete
-            </button>
-          )}
+          {!isDeleted && <DeleteContractButton contractId={c.id} />}
         </div>
       </div>
 
@@ -312,13 +300,6 @@ export default async function ContractDetail({
             </div>
           </Card>
         </div>
-
-        {/* Side actions (cleaned up) */}
-        <aside className="space-y-4">
-          <Card title="Actions">
-            <ContractActions contractId={c.id} isDeleted={isDeleted} />
-          </Card>
-        </aside>
       </div>
     </PageContainer>
   );
