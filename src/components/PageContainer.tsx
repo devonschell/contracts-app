@@ -1,5 +1,7 @@
-// src/components/PageContainer.tsx
+"use client";
+
 import { ReactNode } from "react";
+import { SignedIn, UserButton } from "@clerk/nextjs";
 
 export default function PageContainer({
   title,
@@ -24,10 +26,24 @@ export default function PageContainer({
             <p className="mt-1 text-sm text-muted-foreground">{description}</p>
           )}
         </div>
-        {actions && <div className="flex-shrink-0">{actions}</div>}
+
+        {/* Actions + Clerk Avatar */}
+        <div className="flex items-center gap-3">
+          {actions}
+          <SignedIn>
+            <UserButton
+              appearance={{
+                elements: {
+                  avatarBox: "h-9 w-9",
+                },
+              }}
+              afterSignOutUrl="/"
+            />
+          </SignedIn>
+        </div>
       </div>
 
-      {/* Page content */}
+      {/* Page Content */}
       <div>{children}</div>
     </div>
   );

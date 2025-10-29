@@ -11,12 +11,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <Sidebar />
       </aside>
 
-      {/* Main Content area */}
+      {/* Main Content */}
       <main className="flex-1 bg-[var(--muted)]/60">
-        {/* page container */}
-        <div className="mx-auto max-w-6xl px-8 py-8">
-          {children}
-        </div>
+        <div className="mx-auto max-w-6xl px-8 py-8">{children}</div>
       </main>
     </div>
   );
