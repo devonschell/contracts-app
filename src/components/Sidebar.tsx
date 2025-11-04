@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 
@@ -23,14 +24,20 @@ export default function Sidebar() {
         bg-sidebar text-[color:var(--sidebar-foreground)]
       "
     >
+      {/* Brand */}
       <div className="p-4">
         <Link href="/" className="inline-block select-none no-underline">
-          <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-500 bg-clip-text text-transparent">
-            ClauseIQ
-          </span>
+          <Image
+            src="/brand/oviu-logo.png"   // <- make sure the file is public/brand/oviu-logo.png
+            alt="OVIU"
+            width={132}
+            height={34}
+            priority
+          />
         </Link>
       </div>
 
+      {/* Nav */}
       <nav className="flex flex-col gap-1 p-2">
         {nav.map((item) => {
           const active =
@@ -41,12 +48,10 @@ export default function Sidebar() {
               key={item.href}
               href={item.href}
               className={clsx(
-                // base
                 "relative rounded-md px-3 py-2 text-sm transition-colors no-underline",
                 "text-gray-700 hover:bg-gray-100 hover:text-black",
-                // active (no blue fill; left indicator + bolder text)
                 active &&
-                  "font-semibold text-black bg-transparent after:absolute after:left-0 after:top-1.5 after:bottom-1.5 after:w-1 after:rounded-full after:bg-blue-500"
+                  "font-semibold text-black bg-transparent after:absolute after:left-0 after:top-1.5 after:bottom-1.5 after:w-1 after:rounded-full after:bg-[var(--primary)]"
               )}
             >
               {item.name}

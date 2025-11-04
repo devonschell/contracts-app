@@ -2,7 +2,7 @@
 @import "tw-animate-css";
 
 /* -------------------------------------------------- */
-/* 🌗 Theme Setup                                    */
+/* 🌗 Theme Setup (Base Variables)                    */
 /* -------------------------------------------------- */
 @custom-variant dark (&:is(.dark *));
 
@@ -25,92 +25,93 @@
 }
 
 /* -------------------------------------------------- */
-/* 🩵 ClauseIQ Light Theme (Neutral + Professional)   */
+/* 💜 OVIU Light Theme                                */
 /* -------------------------------------------------- */
 :root {
   --radius: 0.625rem;
 
-  --background: #f5f6f8;
-  --foreground: #1e293b;
+  --background: #f6f7fb;
+  --foreground: #1e1f2b;
 
   --card: #ffffff;
-  --card-foreground: #1e293b;
+  --card-foreground: #1e1f2b;
   --popover: #ffffff;
-  --popover-foreground: #1e293b;
+  --popover-foreground: #1e1f2b;
 
-  --primary: #2563eb;
+  --primary: #6b5bff; /* Violet base */
   --primary-foreground: #ffffff;
-  --accent: #3b82f6;
+  --accent: #8f6cff; /* Gradient top-end */
   --accent-foreground: #ffffff;
 
-  --secondary: #e2e8f0;
-  --secondary-foreground: #1e293b;
-  --muted: #f1f5f9;
-  --muted-foreground: #64748b;
+  --secondary: #ececf5;
+  --secondary-foreground: #1e1f2b;
+  --muted: #f3f3f8;
+  --muted-foreground: #6b7280;
 
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #60a5fa;
+  --border: #e4e6ef;
+  --input: #e4e6ef;
+  --ring: #8f6cff;
 
   --destructive: #dc2626;
 
-  --chart-1: #3b82f6;
-  --chart-2: #6366f1;
-  --chart-3: #22c55e;
-  --chart-4: #facc15;
-  --chart-5: #f97316;
-
-  --sidebar: #ffffff;
-  --sidebar-foreground: #1e293b;
-  --sidebar-primary: #2563eb;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f3f4f6;
-  --sidebar-accent-foreground: #111827;
-  --sidebar-border: #e5e7eb;
-  --sidebar-ring: #60a5fa;
-}
-
-/* -------------------------------------------------- */
-/* 🌙 ClauseIQ Dark Mode                              */
-/* -------------------------------------------------- */
-.dark {
-  --background: #0f172a;
-  --foreground: #f8fafc;
-  --card: #1e293b;
-  --card-foreground: #f8fafc;
-  --popover: #1e293b;
-  --popover-foreground: #f8fafc;
-
-  --primary: #3b82f6;
-  --primary-foreground: #ffffff;
-  --accent: #818cf8;
-  --accent-foreground: #ffffff;
-
-  --secondary: #334155;
-  --secondary-foreground: #e2e8f0;
-  --muted: #1e293b;
-  --muted-foreground: #cbd5e1;
-
-  --border: #1e293b;
-  --input: #1e293b;
-  --ring: #3b82f6;
-
-  --destructive: #ef4444;
-
-  --chart-1: #60a5fa;
-  --chart-2: #818cf8;
+  --chart-1: #6b5bff;
+  --chart-2: #8f6cff;
   --chart-3: #22c55e;
   --chart-4: #facc15;
   --chart-5: #fb923c;
 
-  --sidebar: #1e293b;
-  --sidebar-foreground: #f8fafc;
-  --sidebar-primary: #3b82f6;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1e1f2b;
+  --sidebar-primary: #6b5bff;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #334155;
+  --sidebar-accent: #f4f3ff;
+  --sidebar-accent-foreground: #1e1f2b;
+  --sidebar-border: #ececf5;
+  --sidebar-ring: #8f6cff;
+}
+
+/* -------------------------------------------------- */
+/* 🌙 OVIU Dark Mode                                  */
+/* -------------------------------------------------- */
+.dark {
+  --background: #0f1120;
+  --foreground: #f8f9fc;
+
+  --card: #181a2d;
+  --card-foreground: #f8f9fc;
+  --popover: #1d2035;
+  --popover-foreground: #f8f9fc;
+
+  --primary: #8f6cff;
+  --primary-foreground: #ffffff;
+  --accent: #b39cff;
+  --accent-foreground: #ffffff;
+
+  --secondary: #23243a;
+  --secondary-foreground: #e5e7f0;
+  --muted: #1a1b2e;
+  --muted-foreground: #b2b4c7;
+
+  --border: #252842;
+  --input: #252842;
+  --ring: #8f6cff;
+
+  --destructive: #ef4444;
+
+  --chart-1: #8f6cff;
+  --chart-2: #b39cff;
+  --chart-3: #22c55e;
+  --chart-4: #facc15;
+  --chart-5: #fb923c;
+
+  --sidebar: #1a1b2e;
+  --sidebar-foreground: #f8f9fc;
+  --sidebar-primary: #8f6cff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #23243a;
   --sidebar-accent-foreground: #e2e8f0;
-  --sidebar-border: #1e293b;
-  --sidebar-ring: #3b82f6;
+  --sidebar-border: #1f2032;
+  --sidebar-ring: #8f6cff;
 }
 
 /* -------------------------------------------------- */
@@ -165,7 +166,7 @@
   }
 
   .link:hover {
-    color: #1d4ed8;
+    color: var(--accent);
     text-decoration: underline;
   }
 
@@ -198,16 +199,18 @@
 
   .h3 { font-size: 0.875rem; font-weight: 500; color: var(--muted-foreground); }
 
-  /* Button hierarchy */
+  /* Gradient Primary Button */
   .btn-primary {
-    background-color: var(--primary);
+    background: linear-gradient(to right, var(--primary), var(--accent));
     color: var(--primary-foreground);
     font-weight: 500;
     padding: 0.5rem 1rem;
     border-radius: 0.5rem;
-    transition: all 0.2s ease;
+    transition: all 0.25s ease;
   }
-  .btn-primary:hover { background-color: #1e40af; }
+  .btn-primary:hover {
+    filter: brightness(1.1);
+  }
 
   .btn-secondary {
     background-color: var(--muted);
@@ -217,20 +220,7 @@
     border-radius: 0.5rem;
     transition: all 0.2s ease;
   }
-  .btn-secondary:hover { background-color: #e2e8f0; }
-
-  .btn-tertiary {
-    background: transparent;
-    color: var(--primary);
-    font-weight: 500;
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.5rem;
-    transition: all 0.2s ease;
-  }
-  .btn-tertiary:hover {
-    background-color: rgba(37, 99, 235, 0.08);
-    color: #1e40af;
-  }
+  .btn-secondary:hover { background-color: #e4e4f5; }
 
   .btn-outline {
     border: 1px solid var(--border);
@@ -243,23 +233,9 @@
   }
   .btn-outline:hover {
     background-color: var(--muted);
-    color: var(--foreground);
   }
 
-  .btn-danger {
-    background-color: var(--destructive);
-    color: #fff;
-    font-weight: 500;
-    padding: 0.5rem 1rem;
-    border-radius: 0.5rem;
-    transition: all 0.2s ease;
-  }
-  .btn-danger:hover { background-color: #b91c1c; }
-
-  button:disabled,
-  .btn-primary:disabled,
-  .btn-secondary:disabled,
-  .btn-tertiary:disabled {
+  button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
   }
@@ -278,15 +254,8 @@
     box-shadow: 0 0 0 2px var(--ring);
   }
 
-  /* -------------------------------------------------- */
-  /* 🖱️ Always show hand cursor for clickable UI        */
-  /* -------------------------------------------------- */
   button,
   [role="button"],
-  .btn-primary,
-  .btn-secondary,
-  .btn-outline,
-  .btn-tertiary,
   label[for],
   .clickable {
     cursor: pointer;
@@ -301,8 +270,7 @@
   align-items: center;
   gap: 0.75rem;
   color: var(--sidebar-foreground);
-  text-decoration: none;
-  padding: 0.5rem 0.75rem;
+  padding: 0.4rem 0.75rem;
   border-radius: 0.5rem;
   transition: background-color 0.15s ease, color 0.15s ease;
 }
@@ -328,9 +296,9 @@
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #cfd1e0;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #b2b5cb;
 }
