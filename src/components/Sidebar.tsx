@@ -25,20 +25,21 @@ export default function Sidebar() {
       "
     >
       {/* Brand */}
-      <div className="p-4">
+      <div className="px-4 pt-3 pb-2 flex items-center justify-center border-b border-sidebar-border">
         <Link href="/" className="inline-block select-none no-underline">
           <Image
-            src="/brand/oviu-logo.png"   // <- make sure the file is public/brand/oviu-logo.png
+            src="/brand/oviu-logo.png"
             alt="OVIU"
-            width={132}
-            height={34}
+            width={95}
+            height={26}
+            className="mx-auto"
             priority
           />
         </Link>
       </div>
 
       {/* Nav */}
-      <nav className="flex flex-col gap-1 p-2">
+      <nav className="flex flex-col gap-[2px] p-2 mt-2">
         {nav.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(item.href + "/");
@@ -48,10 +49,10 @@ export default function Sidebar() {
               key={item.href}
               href={item.href}
               className={clsx(
-                "relative rounded-md px-3 py-2 text-sm transition-colors no-underline",
-                "text-gray-700 hover:bg-gray-100 hover:text-black",
+                "relative rounded-md px-3 py-2 text-sm transition-all no-underline flex items-center",
+                "text-gray-700 hover:text-[var(--primary)] hover:bg-[rgba(107,91,255,0.08)]",
                 active &&
-                  "font-semibold text-black bg-transparent after:absolute after:left-0 after:top-1.5 after:bottom-1.5 after:w-1 after:rounded-full after:bg-[var(--primary)]"
+                  "font-semibold text-[var(--primary)] bg-[rgba(107,91,255,0.08)] after:absolute after:left-0 after:top-1.5 after:bottom-1.5 after:w-1 after:rounded-full after:bg-[var(--primary)]"
               )}
             >
               {item.name}
