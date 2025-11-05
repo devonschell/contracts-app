@@ -1,7 +1,6 @@
 "use client";
 
 import { ReactNode } from "react";
-import { SignedIn, UserButton } from "@clerk/nextjs";
 
 export default function PageContainer({
   title,
@@ -27,20 +26,8 @@ export default function PageContainer({
           )}
         </div>
 
-        {/* Actions + Clerk Avatar */}
-        <div className="flex items-center gap-3">
-          {actions}
-          <SignedIn>
-            <UserButton
-              appearance={{
-                elements: {
-                  avatarBox: "h-9 w-9",
-                },
-              }}
-              afterSignOutUrl="/"
-            />
-          </SignedIn>
-        </div>
+        {/* Optional actions (no Clerk avatar here) */}
+        {actions && <div className="flex items-center gap-3">{actions}</div>}
       </div>
 
       {/* Page Content */}

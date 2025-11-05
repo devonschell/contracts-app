@@ -16,7 +16,7 @@ export default function Sidebar() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Nav starts below the fixed top bar */}
+      {/* Nav */}
       <nav className="flex-1 flex flex-col gap-[2px] px-3 py-3">
         {nav.map((item) => {
           const active =
