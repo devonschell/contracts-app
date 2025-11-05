@@ -25,14 +25,14 @@ export default function Sidebar() {
       "
     >
       {/* Brand */}
-      <div className="px-4 pt-3 pb-2 flex items-center justify-center border-b border-sidebar-border">
+      <div className="px-4 py-3 flex items-center justify-center border-b border-sidebar-border">
         <Link href="/" className="inline-block select-none no-underline">
           <Image
-            src="/brand/oviu-logo.png"
+            src="/brand/oviu-logo@2x.png"
             alt="OVIU"
-            width={95}
-            height={26}
-            className="mx-auto"
+            width={100}
+            height={28}
+            className="mx-auto object-contain"
             priority
           />
         </Link>

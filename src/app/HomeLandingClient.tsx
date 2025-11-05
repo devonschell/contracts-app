@@ -8,15 +8,16 @@ export default function HomeLandingClient() {
     <main className="min-h-screen bg-white text-slate-900 flex flex-col">
       {/* ----- Header ----- */}
       <header className="w-full border-b border-slate-200 bg-white/80 backdrop-blur-md sticky top-0 z-20">
-        <div className="max-w-6xl mx-auto flex items-center justify-between px-6 py-4">
+        <div className="max-w-6xl mx-auto flex items-center justify-between px-6 py-2 md:py-3">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 no-underline">
             <Image
-              src="/brand/oviu-logo.png"
+              src="/brand/oviu-logo@2x.png"
               alt="OVIU"
               width={110}
               height={30}
               priority
+              className="object-contain"
             />
           </Link>
 
