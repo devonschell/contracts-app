@@ -16,8 +16,8 @@ export default function Sidebar() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Lower the nav to clear the top bar visually */}
-      <nav className="flex-1 flex flex-col gap-[2px] px-3 pt-[84px]">
+      {/* Nav starts below the fixed top bar */}
+      <nav className="flex-1 flex flex-col gap-[2px] px-3 py-3">
         {nav.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(item.href + "/");
@@ -31,10 +31,10 @@ export default function Sidebar() {
                 "text-slate-700 hover:text-[var(--primary)] hover:bg-[rgba(107,91,255,0.06)]",
                 active &&
                   [
-                    "font-semibold text-slate-900",                       // bolder active label
-                    "bg-[rgba(107,91,255,0.10)]",                         // slightly stronger active bg
+                    "font-semibold text-slate-900",
+                    "bg-[rgba(107,91,255,0.10)]",
                     "after:absolute after:left-0 after:top-1.5 after:bottom-1.5",
-                    "after:w-1 after:rounded-full after:bg-[var(--primary)]", // vertical indicator bar
+                    "after:w-1 after:rounded-full after:bg-[var(--primary)]",
                   ].join(" ")
               )}
             >
@@ -44,7 +44,7 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Footer / version */}
+      {/* Footer */}
       <div className="px-3 py-4 text-[11px] text-slate-500 border-t border-sidebar-border">
         Oviu v0.1
       </div>
