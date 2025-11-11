@@ -2,6 +2,71 @@
 
 import { useEffect, useState } from "react";
 
+/* ---------- Email Chips Input ---------- */
+function EmailChipsInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (newCsv: string) => void;
+}) {
+  const [emails, setEmails] = useState<string[]>(
+    value ? value.split(",").map((e) => e.trim()) : []
+  );
+  const [input, setInput] = useState("");
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && input.trim() !== "") {
+      e.preventDefault();
+      const trimmed = input.trim();
+      if (validateEmail(trimmed) && !emails.includes(trimmed)) {
+        const updated = [...emails, trimmed];
+        setEmails(updated);
+        onChange(updated.join(", "));
+        setInput("");
+      }
+    }
+  };
+
+  const removeEmail = (email: string) => {
+    const updated = emails.filter((e) => e !== email);
+    setEmails(updated);
+    onChange(updated.join(", "));
+  };
+
+  const validateEmail = (email: string) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  return (
+    <div className="border border-border rounded-lg p-2 flex flex-wrap gap-2 bg-white">
+      {emails.map((email) => (
+        <div
+          key={email}
+          className="flex items-center bg-[var(--primary)]/10 text-[var(--primary)] text-sm px-2 py-1 rounded-full"
+        >
+          {email}
+          <button
+            onClick={() => removeEmail(email)}
+            className="ml-1 text-xs text-[var(--primary)]/70 hover:text-[var(--primary)]"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      <input
+        type="email"
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="Type email and press Enter"
+        className="flex-1 outline-none text-sm min-w-[160px]"
+      />
+    </div>
+  );
+}
+
+/* ---------- Main Page ---------- */
+
 type Prefs = {
   recipientsCsv: string;
   renewalAlerts: boolean;
@@ -45,26 +110,35 @@ export default function NotificationsSettingsPage() {
   return (
     <div className="max-w-2xl p-6 space-y-6">
       <h1 className="text-2xl font-semibold">Notifications</h1>
+      <p className="text-sm text-muted-foreground">
+        Manage who receives renewal alerts and when they’re sent.
+      </p>
 
+      {/* Email Recipients */}
       <div className="space-y-2">
-        <label className="block text-sm font-medium">Recipients (comma-separated)</label>
-        <input
-          className="w-full rounded-lg border p-2"
+        <label className="block text-sm font-medium">
+          Email Recipients
+        </label>
+        <EmailChipsInput
           value={prefs.recipientsCsv}
-          onChange={(e) => setPrefs({ ...prefs, recipientsCsv: e.target.value })}
-          placeholder="ops@yourco.com, legal@yourco.com"
+          onChange={(newCsv) =>
+            setPrefs({ ...prefs, recipientsCsv: newCsv })
+          }
         />
         <p className="text-xs text-gray-500">
-          We’ll email these addresses for renewal alerts and digests.
+          We’ll email these addresses for renewal alerts.
         </p>
       </div>
 
+      {/* Alerts Checkboxes */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
             checked={prefs.renewalAlerts}
-            onChange={(e) => setPrefs({ ...prefs, renewalAlerts: e.target.checked })}
+            onChange={(e) =>
+              setPrefs({ ...prefs, renewalAlerts: e.target.checked })
+            }
           />
           Renewal alerts
         </label>
@@ -73,14 +147,19 @@ export default function NotificationsSettingsPage() {
           <input
             type="checkbox"
             checked={prefs.weeklyDigest}
-            onChange={(e) => setPrefs({ ...prefs, weeklyDigest: e.target.checked })}
+            onChange={(e) =>
+              setPrefs({ ...prefs, weeklyDigest: e.target.checked })
+            }
           />
           Weekly digest (coming soon)
         </label>
       </div>
 
+      {/* Notice Days */}
       <div className="space-y-2">
-        <label className="block text-sm font-medium">Notice days</label>
+        <label className="block text-sm font-medium">
+          Reminder lead time (days before renewal)
+        </label>
         <input
           type="number"
           min={1}
@@ -92,10 +171,11 @@ export default function NotificationsSettingsPage() {
           }
         />
         <p className="text-xs text-gray-500">
-          Default lead time when a contract doesn’t specify its own.
+          We’ll send renewal reminders this many days before a contract’s renewal date.
         </p>
       </div>
 
+      {/* Save Button */}
       <button
         onClick={onSave}
         disabled={saving}
