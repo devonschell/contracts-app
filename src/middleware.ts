@@ -15,6 +15,9 @@ const isPublic = createRouteMatcher([
   "/api/cron/(.*)",
   "/api/webhooks/(.*)",
   "/api/health",
+
+  // ✅ allow Stripe webhooks to bypass auth
+  "/api/stripe/webhook",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
