@@ -12,7 +12,7 @@ export default function HomeLandingClient() {
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 no-underline">
             <Image
-              src="/brand/oviu-logo@2x.png"
+              src="/brand/oviu-logo.png"   // <- lowercase path, lives in /public/brand
               alt="OVIU"
               width={110}
               height={30}

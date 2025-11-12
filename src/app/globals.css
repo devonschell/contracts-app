@@ -302,3 +302,10 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #b2b5cb;
 }
+html {
+  scroll-behavior: smooth;
+}
+
+:target {
+  scroll-margin-top: 6rem; /* avoids content being hidden under sticky header */
+}
