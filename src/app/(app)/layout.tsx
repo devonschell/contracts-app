@@ -14,7 +14,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Logo */}
         <div className="flex items-center">
           <Image
-            src="/brand/Oviu-logo.png"
+            src="/brand/oviu-logo.png"
             alt="OVIU"
             width={120}
             height={38}
