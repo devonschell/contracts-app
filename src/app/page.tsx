@@ -1,4 +1,4 @@
-import HomeLandingClient from "../components/HomeLandingClient";
+import HomeLandingClient from "./HomeLandingClient";
 
 export default function HomePage() {
   return <HomeLandingClient />;
