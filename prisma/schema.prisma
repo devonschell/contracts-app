@@ -6,8 +6,8 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL") // use Neon POOLER URL
-  directUrl = env("DIRECT_URL")   // use Neon PRIMARY (non-pooler) URL
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Contract {
@@ -19,7 +19,7 @@ model Contract {
   clerkUserId  String
   title        String?
   counterparty String?
-  status       String  @default("ACTIVE") // ACTIVE | REVIEW | TERMINATED
+  status       String  @default("ACTIVE")
 
   startDate   DateTime?
   endDate     DateTime?
@@ -36,16 +36,14 @@ model Contract {
   billingCadence String?
   paymentCadence String?
 
-  // AI-extracted bullets (arrays saved as JSON)
-  unusualClauses    Json? // string[]
-  terminationRights Json? // string[]
+  unusualClauses    Json?
+  terminationRights Json?
 
   currentUploadId String? @unique
   currentUpload   Upload? @relation("CurrentUpload", fields: [currentUploadId], references: [id])
 
   uploads Upload[] @relation("ContractUploads")
 
-  // back-relation so NotificationLog.contract has a peer
   logs NotificationLog[] @relation("ContractLogs")
 
   @@index([clerkUserId])
@@ -78,15 +76,13 @@ model CompanyProfile {
   companyName String?
   logoUrl     String?
 
-  // Settings
   billingEmail           String?
-  timezone               String?   // e.g. "America/New_York"
-  currency               String?   // e.g. "USD"
-  renewalLeadDaysDefault Int?      // e.g. 45
-  notificationEmails     Json?     // string[] (future)
-  weeklyDigest           Boolean?  // future
+  timezone               String?
+  currency               String?
+  renewalLeadDaysDefault Int?
+  notificationEmails     Json?
+  weeklyDigest           Boolean?
 
-  // notifications
   notificationPrefs NotificationPrefs?
   notificationLogs  NotificationLog[]
 }
@@ -100,10 +96,10 @@ enum NotificationType {
 model NotificationPrefs {
   id            String   @id @default(cuid())
   companyId     String   @unique
-  recipientsCsv String   @default("") // comma-separated emails
+  recipientsCsv String   @default("")
   renewalAlerts Boolean  @default(true)
   weeklyDigest  Boolean  @default(true)
-  noticeDays    Int      @default(30) // fallback when a Contract doesn’t specify renewalNoticeDays
+  noticeDays    Int      @default(30)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -116,8 +112,8 @@ model NotificationLog {
   contractId String?
   type       NotificationType
   subject    String
-  sentTo     String           // comma-separated list actually used
-  status     String           // "SENT" | "ERROR"
+  sentTo     String
+  status     String
   error      String?
   sentAt     DateTime         @default(now())
 
@@ -126,4 +122,30 @@ model NotificationLog {
 
   @@index([companyId])
   @@index([contractId])
+}
+
+//
+// 🔥 NEW — subscription tracking
+//
+model UserSubscription {
+  id               String   @id @default(cuid())
+  clerkUserId      String   @unique
+  stripeCustomerId String?
+  priceId          String?
+  status           String    @default("inactive") // active, past_due, canceled
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+//
+// 🔥 NEW — onboarding + email limits + progress
+//
+model UserSettings {
+  id                String   @id @default(cuid())
+  clerkUserId       String   @unique
+  onboardingStep    Int      @default(0)         // 0 = not started, 1 = emails, 2 = upload, 3 = complete
+  allowedEmails     Int      @default(1)         // Starter=1, Growth=5, Pro=15
+  selectedEmails    Json?                        // array of strings (emails)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }

@@ -1,8 +1,9 @@
 // middleware.ts
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import prisma from "@/lib/prisma";
 
-// Public routes (no auth)
+// Public routes (no auth required)
 const isPublic = createRouteMatcher([
   "/",
   "/login(.*)",
@@ -11,57 +12,78 @@ const isPublic = createRouteMatcher([
   "/sign-up(.*)",
   "/favicon.ico",
 
-  // Public APIs guarded internally
+  // Health + cron + webhooks
+  "/api/health",
   "/api/cron/(.*)",
   "/api/webhooks/(.*)",
-  "/api/health",
-
-  // ✅ allow Stripe webhooks to bypass auth
   "/api/stripe/webhook",
+]);
+
+// Onboarding routes allowed even without full app access
+const onboardingRoutes = createRouteMatcher([
+  "/welcome",
+  "/onboarding/(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
   const url = req.nextUrl;
+  const path = url.pathname;
 
-  // If you're already signed in and you hit the landing page, send to dashboard
   const { userId } = await auth();
-  if (userId && url.pathname === "/") {
+
+  // 1. Allow public routes immediately
+  if (isPublic(req)) return;
+
+  // 2. Require login for everything else
+  if (!userId) {
+    if (path.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const loginUrl = new URL("/login", req.url);
+    loginUrl.searchParams.set("redirect_url", req.url);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // ------------------------------
+  // 3. Check subscription status
+  // ------------------------------
+  const sub = await prisma.userSubscription.findUnique({
+    where: { clerkUserId: userId },
+  });
+
+  const hasActiveSub = sub && sub.status === "active";
+
+  // If no subscription → always force to billing page
+  if (!hasActiveSub && !path.startsWith("/settings/billing")) {
+    return NextResponse.redirect(new URL("/settings/billing", req.url));
+  }
+
+  // ------------------------------
+  // 4. Check onboarding completion
+  // ------------------------------
+  const company = await prisma.companyProfile.findUnique({
+    where: { clerkUserId: userId },
+  });
+
+  const onboardingComplete =
+    company?.billingEmail &&
+    company?.notificationEmails &&
+    Array.isArray(company.notificationEmails) &&
+    company.notificationEmails.length > 0;
+
+  // If subscription exists but onboarding is incomplete → force into onboarding
+  if (hasActiveSub && !onboardingComplete && !onboardingRoutes(req)) {
+    return NextResponse.redirect(new URL("/welcome", req.url));
+  }
+
+  // 5. If signed in & hits "/", redirect to dashboard
+  if (path === "/") {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
-  // Let public routes straight through
-  if (isPublic(req)) return;
-
-  // Server-to-server bypass for cron/ops when CRON_SECRET matches
-  const cronSecret = process.env.CRON_SECRET || "";
-  const provided =
-    (req.headers.get("x-cron-secret") || url.searchParams.get("key") || "").trim();
-
-  const hasBypass =
-    Boolean(cronSecret) &&
-    provided.length > 0 &&
-    provided === cronSecret &&
-    (
-      url.pathname.startsWith("/api/cron/") ||
-      url.pathname.startsWith("/api/contracts")
-    );
-
-  if (hasBypass) return;
-
-  // Everything else requires a signed-in user
-  if (!userId) {
-    // APIs get 401 JSON
-    if (url.pathname.startsWith("/api/")) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-    // Pages get redirected to sign-in, preserving destination
-    const signInUrl = new URL("/login", req.url);
-    signInUrl.searchParams.set("redirect_url", req.url);
-    return NextResponse.redirect(signInUrl);
-  }
+  return;
 });
 
 export const config = {
-  // Run on all routes except Next internals & static files; includes /api
   matcher: ["/((?!_next|.*\\..*).*)", "/(api)(.*)"],
 };
