@@ -11,15 +11,13 @@ const isPublic = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/favicon.ico",
-
-  // Health + cron + webhooks
   "/api/health",
   "/api/cron/(.*)",
   "/api/webhooks/(.*)",
   "/api/stripe/webhook",
 ]);
 
-// Onboarding routes allowed even without full app access
+// Onboarding routes
 const onboardingRoutes = createRouteMatcher([
   "/welcome",
   "/onboarding/(.*)",
@@ -31,10 +29,10 @@ export default clerkMiddleware(async (auth, req) => {
 
   const { userId } = await auth();
 
-  // 1. Allow public routes immediately
+  // === 1. Allow PUBLIC ROUTES
   if (isPublic(req)) return;
 
-  // 2. Require login for everything else
+  // === 2. Block unauth'd users
   if (!userId) {
     if (path.startsWith("/api/")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -44,39 +42,40 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(loginUrl);
   }
 
-  // ------------------------------
-  // 3. Check subscription status
-  // ------------------------------
+  // === 3. Subscription Check
   const sub = await prisma.userSubscription.findUnique({
     where: { clerkUserId: userId },
   });
+  const hasActiveSub = sub?.status === "active";
 
-  const hasActiveSub = sub && sub.status === "active";
-
-  // If no subscription → always force to billing page
+  // If no subscription, force to billing
   if (!hasActiveSub && !path.startsWith("/settings/billing")) {
     return NextResponse.redirect(new URL("/settings/billing", req.url));
   }
 
-  // ------------------------------
-  // 4. Check onboarding completion
-  // ------------------------------
+  // === 4. Onboarding Check
   const company = await prisma.companyProfile.findUnique({
     where: { clerkUserId: userId },
   });
 
-  const onboardingComplete =
-    company?.billingEmail &&
-    company?.notificationEmails &&
-    Array.isArray(company.notificationEmails) &&
-    company.notificationEmails.length > 0;
+  const prefs = company
+    ? await prisma.notificationPrefs.findUnique({
+        where: { companyId: company.id },
+      })
+    : null;
 
-  // If subscription exists but onboarding is incomplete → force into onboarding
+  const hasBillingEmail = Boolean(company?.billingEmail);
+  const hasRecipients =
+    Boolean(prefs?.recipientsCsv) &&
+    prefs!.recipientsCsv.trim().length > 0;
+
+  const onboardingComplete = hasBillingEmail && hasRecipients;
+
   if (hasActiveSub && !onboardingComplete && !onboardingRoutes(req)) {
     return NextResponse.redirect(new URL("/welcome", req.url));
   }
 
-  // 5. If signed in & hits "/", redirect to dashboard
+  // === 5. Redirect "/" → dashboard
   if (path === "/") {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
