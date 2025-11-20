@@ -26,20 +26,29 @@ const onboardingRoutes = createRouteMatcher([
 export default clerkMiddleware(async (auth, req) => {
   const url = req.nextUrl;
   const path = url.pathname;
-
   const { userId } = await auth();
 
-  // === 1. Allow PUBLIC ROUTES
-  if (isPublic(req)) return;
+  // Helper to always attach pathname header
+  function withPathHeader(res: NextResponse) {
+    res.headers.set("x-next-pathname", path);
+    return res;
+  }
 
-  // === 2. Block unauth'd users
+  // === 1. Allow PUBLIC ROUTES
+  if (isPublic(req)) {
+    return withPathHeader(NextResponse.next());
+  }
+
+  // === 2. Block unauthenticated users
   if (!userId) {
     if (path.startsWith("/api/")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return withPathHeader(
+        NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      );
     }
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("redirect_url", req.url);
-    return NextResponse.redirect(loginUrl);
+    return withPathHeader(NextResponse.redirect(loginUrl));
   }
 
   // === 3. Subscription Check
@@ -48,9 +57,11 @@ export default clerkMiddleware(async (auth, req) => {
   });
   const hasActiveSub = sub?.status === "active";
 
-  // If no subscription, force to billing
+  // Force billing page if no subscription
   if (!hasActiveSub && !path.startsWith("/settings/billing")) {
-    return NextResponse.redirect(new URL("/settings/billing", req.url));
+    return withPathHeader(
+      NextResponse.redirect(new URL("/settings/billing", req.url))
+    );
   }
 
   // === 4. Onboarding Check
@@ -72,15 +83,20 @@ export default clerkMiddleware(async (auth, req) => {
   const onboardingComplete = hasBillingEmail && hasRecipients;
 
   if (hasActiveSub && !onboardingComplete && !onboardingRoutes(req)) {
-    return NextResponse.redirect(new URL("/welcome", req.url));
+    return withPathHeader(
+      NextResponse.redirect(new URL("/welcome", req.url))
+    );
   }
 
   // === 5. Redirect "/" → dashboard
   if (path === "/") {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+    return withPathHeader(
+      NextResponse.redirect(new URL("/dashboard", req.url))
+    );
   }
 
-  return;
+  // Default (authenticated route)
+  return withPathHeader(NextResponse.next());
 });
 
 export const config = {

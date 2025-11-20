@@ -1,12 +1,32 @@
-// src/app/app/layout.tsx
+// src/app/(app)/layout.tsx
 import "../globals.css";
 import Sidebar from "@/components/Sidebar";
 import Image from "next/image";
 import { UserButton } from "@clerk/nextjs";
+import { headers } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
+  // Detect current pathname on server (SSR-safe)
+  const pathname = headers().get("x-next-pathname") || "";
+
+  // Onboarding mode: hide sidebar + top navigation
+  const isOnboarding = pathname.startsWith("/welcome");
+
+  if (isOnboarding) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex flex-col">
+        <main className="flex-1">
+          <div className="mx-auto max-w-3xl px-6 py-10">
+            {children}
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // Default authenticated layout
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       {/* Top Bar */}
@@ -23,7 +43,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           />
         </div>
 
-        {/* Clerk avatar only (notifications removed) */}
+        {/* Clerk user button */}
         <div className="flex items-center">
           <UserButton afterSignOutUrl="/login" />
         </div>
