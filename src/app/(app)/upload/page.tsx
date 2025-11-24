@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PageContainer from "@/components/PageContainer";
 
 type QueueItem = {
@@ -15,6 +15,13 @@ type QueueItem = {
 export default function UploadPage() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // 🔥 Mark onboarding step 2 when user reaches this page
+  useEffect(() => {
+    fetch("/api/onboarding/mark-upload-seen", { method: "POST" }).catch(() => {
+      // fire-and-forget; no UI impact
+    });
+  }, []);
 
   const onFilesChosen = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -39,10 +46,14 @@ export default function UploadPage() {
   );
 
   const doBrowse = () => inputRef.current?.click();
-  const uploading = useMemo(() => queue.some((q) => q.status === "uploading"), [queue]);
+  const uploading = useMemo(
+    () => queue.some((q) => q.status === "uploading"),
+    [queue]
+  );
 
   const startUploadAll = async () => {
-    if (queue.length === 0) return alert("Choose one or more contract files first.");
+    if (queue.length === 0)
+      return alert("Choose one or more contract files first.");
 
     for (let i = 0; i < queue.length; i++) {
       const item = queue[i];
@@ -79,10 +90,16 @@ export default function UploadPage() {
               });
             } else {
               const reason = json?.error || json?.message || "Unknown error";
-              updateQueue(i, { status: "error", message: `Upload failed: ${reason}` });
+              updateQueue(i, {
+                status: "error",
+                message: `Upload failed: ${reason}`,
+              });
             }
           } catch {
-            updateQueue(i, { status: "error", message: "Bad response from server." });
+            updateQueue(i, {
+              status: "error",
+              message: "Bad response from server.",
+            });
           }
         };
 
@@ -99,10 +116,14 @@ export default function UploadPage() {
           xhr.send(form);
         });
       } catch (err: any) {
-        updateQueue(i, { status: "error", message: err?.message || "Upload failed." });
+        updateQueue(i, {
+          status: "error",
+          message: err?.message || "Upload failed.",
+        });
       }
     }
 
+    // After batch completes, send them to Contracts list
     window.location.href = "/contracts";
   };
 
@@ -117,7 +138,7 @@ export default function UploadPage() {
   return (
     <PageContainer
       title="Upload Contracts"
-      description="Add new contracts to ClauseIQ for analysis and tracking."
+      description="Add new contracts to OVIU for analysis and tracking."
     >
       {/* Drag & drop zone */}
       <div
@@ -137,7 +158,9 @@ export default function UploadPage() {
             browse
           </button>
         </p>
-        <p className="text-sm opacity-80">Drop multiple files to import in a batch.</p>
+        <p className="text-sm opacity-80">
+          Drop multiple files to import in a batch.
+        </p>
 
         <input
           ref={inputRef}
@@ -166,7 +189,9 @@ export default function UploadPage() {
                     <div className="truncate text-sm font-medium text-foreground">
                       {item.file.name}
                     </div>
-                    <div className="text-xs text-muted-foreground">{item.sizeLabel}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {item.sizeLabel}
+                    </div>
                     <div className="mt-3 h-2 w-64 overflow-hidden rounded-full bg-muted">
                       <div
                         className={`h-2 rounded-full transition-all ${
@@ -187,7 +212,9 @@ export default function UploadPage() {
               <div className="pt-2">
                 <button
                   onClick={startUploadAll}
-                  disabled={uploading || queue.every((q) => q.status === "done")}
+                  disabled={
+                    uploading || queue.every((q) => q.status === "done")
+                  }
                   className="btn-primary disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {uploading ? "Uploading..." : "Upload & Create"}

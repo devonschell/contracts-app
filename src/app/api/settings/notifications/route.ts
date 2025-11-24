@@ -13,7 +13,6 @@ async function getOrCreateCompanyIdForUser(userId: string) {
   });
   if (existing) return existing.id;
 
-  // Create minimal profile; other fields can be filled on /settings/profile later
   const created = await prisma.companyProfile.create({
     data: { clerkUserId: userId },
     select: { id: true },
@@ -23,9 +22,9 @@ async function getOrCreateCompanyIdForUser(userId: string) {
 
 export async function GET() {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!userId)
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
-  // Get company + prefs; do NOT force-create prefs on GET, just return sensible defaults
   const company = await prisma.companyProfile.findUnique({
     where: { clerkUserId: userId },
     select: {
@@ -35,7 +34,6 @@ export async function GET() {
     },
   });
 
-  // Build defaults if not set
   const defaults = {
     recipientsCsv: "",
     renewalAlerts: true,
@@ -57,7 +55,8 @@ export async function GET() {
 
 export async function PUT(req: NextRequest) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  if (!userId)
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
   const companyId = await getOrCreateCompanyIdForUser(userId);
 
@@ -67,12 +66,13 @@ export async function PUT(req: NextRequest) {
   const weeklyDigest = Boolean(body?.weeklyDigest ?? true);
   const noticeDaysNum = Number(body?.noticeDays ?? "");
 
-  // Basic validation
   if (!Number.isFinite(noticeDaysNum) || noticeDaysNum < 1 || noticeDaysNum > 365) {
-    return NextResponse.json({ ok: false, error: "noticeDays must be 1–365" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "noticeDays must be 1–365" },
+      { status: 400 }
+    );
   }
 
-  // Normalize recipients: trim each, remove empties, re-join
   const recipients = recipientsCsv
     .split(",")
     .map((s: string) => s.trim())
@@ -96,10 +96,31 @@ export async function PUT(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({ ok: true, data: {
-    recipientsCsv: prefs.recipientsCsv,
-    renewalAlerts: prefs.renewalAlerts,
-    weeklyDigest: prefs.weeklyDigest,
-    noticeDays: prefs.noticeDays,
-  }});
+  // 🔥 Mark onboarding step >= 1 (notifications configured)
+  const existingSettings = await prisma.userSettings.findUnique({
+    where: { clerkUserId: userId },
+    select: { onboardingStep: true },
+  });
+
+  const currentStep = existingSettings?.onboardingStep ?? 0;
+  const nextStep = currentStep >= 1 ? currentStep : 1;
+
+  await prisma.userSettings.upsert({
+    where: { clerkUserId: userId },
+    update: { onboardingStep: nextStep },
+    create: {
+      clerkUserId: userId,
+      onboardingStep: nextStep,
+    },
+  });
+
+  return NextResponse.json({
+    ok: true,
+    data: {
+      recipientsCsv: prefs.recipientsCsv,
+      renewalAlerts: prefs.renewalAlerts,
+      weeklyDigest: prefs.weeklyDigest,
+      noticeDays: prefs.noticeDays,
+    },
+  });
 }

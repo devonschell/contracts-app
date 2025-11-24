@@ -1,11 +1,13 @@
 import prisma from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import DashboardPie, { type PieDatum } from "@/components/DashboardPie";
 import DashboardAlerts, { type AlertItem } from "@/components/DashboardAlerts";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import PageContainer from "@/components/PageContainer";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 type Cat = "expired" | "7" | "30" | "90";
 
@@ -29,17 +31,63 @@ function categoryFor(date: Date | null): Cat | null {
   return null;
 }
 
+/**
+ * Ensure user has:
+ *  - an active subscription
+ *  - completed onboarding steps (welcome + upload)
+ * Redirects if not.
+ */
+async function ensureSubscribedAndOnboarded(clerkUserId: string) {
+  // 1) Subscription must be active
+  const sub = await prisma.userSubscription.findUnique({
+    where: { clerkUserId },
+    select: { status: true },
+  });
+
+  const isActive = sub?.status === "active";
+  if (!isActive) {
+    redirect("/settings/billing");
+  }
+
+  // 2) Onboarding step from UserSettings
+  const settings = await prisma.userSettings.findUnique({
+    where: { clerkUserId },
+    select: { onboardingStep: true },
+  });
+
+  const step = settings?.onboardingStep ?? 0;
+
+  // Step 0 = not started → /welcome
+  if (step < 1) {
+    redirect("/welcome");
+  }
+
+  // Step 1 = notifications saved but hasn't reached upload page → /upload
+  if (step < 2) {
+    redirect("/upload");
+  }
+
+  // Step >= 2 → allow dashboard
+}
+
 export default async function DashboardPage() {
   const { userId } = await auth();
-  if (!userId) return null;
+  if (!userId) {
+    redirect("/login");
+  }
+
+  await ensureSubscribedAndOnboarded(userId!);
 
   const contracts = await prisma.contract.findMany({
-    where: { clerkUserId: userId, deletedAt: null },
+    where: { clerkUserId: userId!, deletedAt: null },
     orderBy: { renewalDate: "asc" },
     include: { uploads: { orderBy: { createdAt: "desc" }, take: 1 } },
   });
 
-  let expired = 0, due7 = 0, due30 = 0, due90 = 0;
+  let expired = 0,
+    due7 = 0,
+    due30 = 0,
+    due90 = 0;
 
   const alertItems: AlertItem[] = contracts
     .map((c) => {
@@ -84,7 +132,11 @@ export default async function DashboardPage() {
                 { label: "Expired", color: COLORS.expired, count: expired },
                 { label: "7 days", color: COLORS["7"], count: due7 },
                 { label: "30 days", color: COLORS["30"], count: due30 },
-                { label: "90 days", color: COLORS["90"], count: due90 },
+                {
+                  label: "90 days",
+                  color: COLORS["90"],
+                  count: due90,
+                },
               ].map((item) => (
                 <div key={item.label} className="flex items-center gap-2">
                   <span
