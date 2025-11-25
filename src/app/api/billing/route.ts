@@ -6,11 +6,77 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-06-20",
 });
 
+// Helper to safely get base URL
+function getBaseUrl() {
+  const fromEnv = process.env.NEXT_PUBLIC_SITE_URL;
+  if (fromEnv && fromEnv.startsWith("http")) {
+    return fromEnv;
+  }
+  return "http://localhost:3002";
+}
+
+// ---------- GET /api/billing  ----------
+// Returns { subscribed: boolean } for the current user
+export async function GET(req: Request) {
+  try {
+    const { userId } = await auth();
+
+    // Not logged in → not subscribed
+    if (!userId) {
+      return NextResponse.json({ subscribed: false });
+    }
+
+    // Dev bypass user is always treated as subscribed
+    if (
+      process.env.DEV_BYPASS_USER_ID &&
+      userId === process.env.DEV_BYPASS_USER_ID
+    ) {
+      return NextResponse.json({ subscribed: true });
+    }
+
+    const user = await currentUser();
+    const email = user?.emailAddresses?.[0]?.emailAddress;
+
+    if (!email) {
+      return NextResponse.json({ subscribed: false });
+    }
+
+    // Find Stripe customer by email
+    const customers = await stripe.customers.list({ email, limit: 1 });
+    const customer = customers.data[0];
+
+    if (!customer) {
+      return NextResponse.json({ subscribed: false });
+    }
+
+    // Check if the customer has any active/trialing subscription
+    const subs = await stripe.subscriptions.list({
+      customer: customer.id,
+      status: "all",
+      limit: 10,
+    });
+
+    const hasActive = subs.data.some((sub) =>
+      ["active", "trialing", "past_due"].includes(sub.status)
+    );
+
+    return NextResponse.json({ subscribed: hasActive });
+  } catch (err: any) {
+    console.error("Stripe billing GET error:", err);
+    // On error, be safe and treat as not subscribed
+    return NextResponse.json(
+      { subscribed: false, error: err.message ?? "Billing check failed" },
+      { status: 200 }
+    );
+  }
+}
+
+// ---------- POST /api/billing  ----------
+// { action: "checkout" | "portal", priceId?: string }
 export async function POST(req: Request) {
   try {
     const { action, priceId } = await req.json();
 
-    // --- Clerk authentication ---
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -22,7 +88,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing user email" }, { status: 400 });
     }
 
-    // --- Get or create Stripe customer ---
+    // Get or create Stripe customer
     const customers = await stripe.customers.list({ email, limit: 1 });
     let customer = customers.data[0];
 
@@ -33,13 +99,9 @@ export async function POST(req: Request) {
       });
     }
 
-    // --- Determine base URL safely ---
-    const baseUrl =
-      process.env.NEXT_PUBLIC_SITE_URL?.startsWith("http")
-        ? process.env.NEXT_PUBLIC_SITE_URL
-        : "http://localhost:3002";
+    const baseUrl = getBaseUrl();
 
-    // --- Handle checkout session ---
+    // ----- Start a checkout session -----
     if (action === "checkout") {
       if (!priceId) {
         return NextResponse.json({ error: "Missing priceId" }, { status: 400 });
@@ -50,12 +112,14 @@ export async function POST(req: Request) {
         mode: "subscription",
         line_items: [
           {
-            price: priceId, // ✅ must match your Stripe Price ID (e.g. price_12345)
+            price: priceId,
             quantity: 1,
           },
         ],
-        success_url: `${baseUrl}/settings?success=true`,
-        cancel_url: `${baseUrl}/settings?canceled=true`,
+        // ✅ After successful checkout, go to onboarding (welcome)
+        success_url: `${baseUrl}/welcome?checkout=success`,
+        // ✅ On cancel, go back to the billing paywall
+        cancel_url: `${baseUrl}/billing?checkout=canceled`,
         subscription_data: {
           metadata: { clerkUserId: userId, email },
         },
@@ -64,17 +128,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ url: session.url });
     }
 
-    // --- Handle billing portal ---
+    // ----- Open billing portal (for existing subscribers) -----
     if (action === "portal") {
       const portal = await stripe.billingPortal.sessions.create({
         customer: customer.id,
-        return_url: `${baseUrl}/settings`,
+        // Send them back into app billing/settings after managing subscription
+        return_url: `${baseUrl}/settings/billing`,
       });
 
       return NextResponse.json({ url: portal.url });
     }
 
-    // --- Invalid action fallback ---
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (err: any) {
     console.error("Stripe billing route error:", err);

@@ -3,9 +3,8 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import Providers from "./Providers";
 
-export const runtime = "nodejs"; // ✅ REQUIRED — forces Node runtime
+export const runtime = "nodejs";
 
-// Next.js 15: themeColor + viewport must live here
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -14,7 +13,8 @@ export const viewport: Viewport = {
 };
 
 const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL && process.env.NEXT_PUBLIC_SITE_URL.startsWith("http")
+  process.env.NEXT_PUBLIC_SITE_URL &&
+  process.env.NEXT_PUBLIC_SITE_URL.startsWith("http")
     ? process.env.NEXT_PUBLIC_SITE_URL
     : "http://localhost:3002";
 
@@ -26,20 +26,6 @@ export const metadata: Metadata = {
   icons: {
     icon: "/brand/oviu-logo.png",
     apple: "/brand/oviu-logo.png",
-  },
-  openGraph: {
-    title: "OVIU — Contract Intelligence",
-    description:
-      "Organize, summarize, and track every contract with AI. Never miss a renewal.",
-    url: "/",
-    siteName: "OVIU",
-    images: [{ url: "/brand/oviu-logo.png", width: 1200, height: 630 }],
-    type: "website",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "OVIU — Contract Intelligence",
-    images: ["/brand/oviu-logo.png"],
   },
 };
 
