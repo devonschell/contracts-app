@@ -3,36 +3,14 @@ import "../globals.css";
 import Sidebar from "@/components/Sidebar";
 import Image from "next/image";
 import { UserButton } from "@clerk/nextjs";
-import { headers as nextHeaders } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  // 🔥 MUST AWAIT HEADERS IN NEXT.JS 15
-  const h = await nextHeaders();
-  const pathname = h.get("x-next-pathname") || "";
-
-  // If onboarding, hide sidebar/top nav
-  const isOnboarding = pathname.startsWith("/welcome");
-
-  if (isOnboarding) {
-    return (
-      <div className="min-h-screen bg-background text-foreground flex flex-col">
-        <main className="flex-1">
-          <div className="mx-auto max-w-3xl px-6 py-10">
-            {children}
-          </div>
-        </main>
-      </div>
-    );
-  }
-
-  // Default authenticated layout
+export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       {/* Top Bar */}
       <header className="fixed top-0 left-0 right-0 z-40 h-20 border-b border-border bg-white/90 backdrop-blur-md shadow-sm flex items-center justify-between px-8">
-        {/* Logo */}
         <div className="flex items-center">
           <Image
             src="/brand/oviu-logo.png"
@@ -44,22 +22,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           />
         </div>
 
-        {/* Clerk user button */}
-        <div className="flex items-center">
-          <UserButton afterSignOutUrl="/login" />
-        </div>
+        <UserButton afterSignOutUrl="/login" />
       </header>
 
-      {/* Content below header */}
+      {/* Main layout */}
       <div className="flex flex-1 pt-20">
-        {/* Sidebar */}
-        <aside className="sticky top-20 h-[calc(100vh-5rem)] w-56 shrink-0 border-r border-border bg-sidebar text-sidebar-foreground">
+        <aside className="sticky top-20 h-[calc(100vh-5rem)] w-56 shrink-0 border-r border-border bg-sidebar">
           <Sidebar />
         </aside>
 
-        {/* Main content */}
         <main className="flex-1 bg-[var(--muted)]/60">
-          <div className="mx-auto max-w-6xl px-8 py-8">{children}</div>
+          <div className="mx-auto max-w-6xl px-8 py-8">
+            {children}
+          </div>
         </main>
       </div>
     </div>

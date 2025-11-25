@@ -1,5 +1,9 @@
+// src/app/page.tsx
 import HomeLandingClient from "./HomeLandingClient";
+import { auth } from "@clerk/nextjs/server";
 
-export default function HomePage() {
-  return <HomeLandingClient />;
+export default async function HomePage() {
+  const { userId } = await auth();
+
+  return <HomeLandingClient loggedIn={!!userId} />;
 }

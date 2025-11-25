@@ -1,9 +1,26 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 
-export default function HomeLandingClient() {
+export default function HomeLandingClient({ loggedIn = false }) {
+  const router = useRouter();
+
+  // ---------------------------------------
+  // If logged in → redirect to dashboard
+  // (Client-side only — prevents Clerk loops)
+  // ---------------------------------------
+  useEffect(() => {
+    if (loggedIn) {
+      router.replace("/dashboard");
+    }
+  }, [loggedIn]);
+
+  // Prevent rendering landing page for a moment
+  if (loggedIn) return null;
+
   return (
     <main className="min-h-screen bg-white text-slate-900 flex flex-col">
       {/* ----- Header ----- */}
@@ -12,7 +29,7 @@ export default function HomeLandingClient() {
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 no-underline">
             <Image
-              src="/brand/oviu-logo.png"   // <- lowercase path, lives in /public/brand
+              src="/brand/oviu-logo.png"
               alt="OVIU"
               width={110}
               height={30}

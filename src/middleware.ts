@@ -1,10 +1,9 @@
-// middleware.ts
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-// Public routes (no auth required)
+// Public routes — Clerk MUST be allowed to load these
 const isPublic = createRouteMatcher([
-  // NOTE: deliberately **not** including "/" here
+  "/",
   "/login(.*)",
   "/signup(.*)",
   "/sign-in(.*)",
@@ -14,53 +13,25 @@ const isPublic = createRouteMatcher([
   "/auth-callback(.*)",
   "/favicon.ico",
   "/api/health",
-  "/api/cron/(.*)",
   "/api/webhooks/(.*)",
   "/api/stripe/webhook",
 ]);
 
 export default clerkMiddleware((auth, req) => {
   const { userId } = auth();
-  const url = req.nextUrl;
-  const path = url.pathname;
+  const path = req.nextUrl.pathname;
 
-  // helper to keep x-next-pathname for the app layout
-  const withPath = (res: NextResponse) => {
-    res.headers.set("x-next-pathname", path);
-    return res;
-  };
+  // Always allow Clerk’s public routes + landing page
+  if (isPublic(req)) return NextResponse.next();
 
-  // 1) Public routes always allowed
-  if (isPublic(req)) {
-    return withPath(NextResponse.next());
-  }
-
-  // 2) Landing page "/" is public **only when logged out**
-  if (!userId && path === "/") {
-    return withPath(NextResponse.next());
-  }
-
-  // 3) Everything else requires auth
+  // Require auth for everything else
   if (!userId) {
-    // API: return 401 instead of redirecting to HTML login
-    if (path.startsWith("/api/")) {
-      return withPath(
-        NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-      );
-    }
-
-    const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("redirect_url", req.url);
-    return withPath(NextResponse.redirect(loginUrl));
+    const login = new URL("/login", req.url);
+    login.searchParams.set("redirect_url", req.url);
+    return NextResponse.redirect(login);
   }
 
-  // 4) If logged in and hit "/", send to dashboard
-  if (path === "/") {
-    return withPath(NextResponse.redirect(new URL("/dashboard", req.url)));
-  }
-
-  // 5) Default: allow
-  return withPath(NextResponse.next());
+  return NextResponse.next();
 });
 
 export const config = {
