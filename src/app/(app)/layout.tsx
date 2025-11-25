@@ -3,15 +3,16 @@ import "../globals.css";
 import Sidebar from "@/components/Sidebar";
 import Image from "next/image";
 import { UserButton } from "@clerk/nextjs";
-import { headers } from "next/headers";
+import { headers as nextHeaders } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
-  // Detect current pathname on server (SSR-safe)
-  const pathname = headers().get("x-next-pathname") || "";
+export default async function AppLayout({ children }: { children: React.ReactNode }) {
+  // 🔥 MUST AWAIT HEADERS IN NEXT.JS 15
+  const h = await nextHeaders();
+  const pathname = h.get("x-next-pathname") || "";
 
-  // Onboarding mode: hide sidebar + top navigation
+  // If onboarding, hide sidebar/top nav
   const isOnboarding = pathname.startsWith("/welcome");
 
   if (isOnboarding) {

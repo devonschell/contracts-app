@@ -1,26 +1,17 @@
-// middleware.ts
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
 
-// Public — no auth required
 const isPublic = createRouteMatcher([
   "/",
   "/login(.*)",
   "/signup(.*)",
   "/sign-in(.*)",
   "/sign-up(.*)",
+  "/sso-callback(.*)",
+  "/oauth-callback(.*)",
+  "/auth-callback(.*)",
   "/favicon.ico",
   "/api/health",
-  "/api/cron/(.*)",
-  "/api/webhooks/(.*)",
-  "/api/stripe/webhook",
-]);
-
-// Onboarding steps
-const onboardingRoutes = createRouteMatcher([
-  "/welcome(.*)",
-  "/onboarding(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
@@ -28,59 +19,37 @@ export default clerkMiddleware(async (auth, req) => {
   const url = req.nextUrl;
   const path = url.pathname;
 
-  // Attach pathname to headers
+  // Pass pathname to layout
   const withPath = (res: NextResponse) => {
     res.headers.set("x-next-pathname", path);
     return res;
   };
 
-  // 1. Public pages allowed
+  //
+  // 1. PUBLIC ROUTES
+  //
   if (isPublic(req)) return withPath(NextResponse.next());
 
-  // 2. Require login for everything else
+  //
+  // 2. REQUIRE AUTH
+  //
   if (!userId) {
-    const login = new URL("/login", req.url);
-    login.searchParams.set("redirect_url", req.url);
-    return withPath(NextResponse.redirect(login));
+    const loginUrl = new URL("/login", req.url);
+    loginUrl.searchParams.set("redirect_url", req.url);
+    return withPath(NextResponse.redirect(loginUrl));
   }
 
-  // 3. Subscription check
-  const sub = await prisma.userSubscription.findUnique({
-    where: { clerkUserId: userId },
-  });
-  const hasActiveSub = sub?.status === "active";
-
-  if (!hasActiveSub && !path.startsWith("/settings/billing")) {
-    return withPath(NextResponse.redirect(new URL("/settings/billing", req.url)));
-  }
-
-  // 4. Onboarding check
-  const company = await prisma.companyProfile.findUnique({
-    where: { clerkUserId: userId },
-  });
-
-  const prefs = company
-    ? await prisma.notificationPrefs.findUnique({
-        where: { companyId: company.id },
-      })
-    : null;
-
-  const hasBillingEmail = Boolean(company?.billingEmail);
-  const hasRecipients =
-    Boolean(prefs?.recipientsCsv) && prefs!.recipientsCsv.trim().length > 0;
-
-  const onboardingComplete = hasBillingEmail && hasRecipients;
-
-  if (hasActiveSub && !onboardingComplete && !onboardingRoutes(req)) {
-    return withPath(NextResponse.redirect(new URL("/welcome", req.url)));
-  }
-
-  // 5. Signed in → "/" should go to dashboard
+  //
+  // 3. SPECIAL HANDLING FOR "/"
+  //    (Clerk hydration touches "/", allow it)
+  //
   if (path === "/") {
     return withPath(NextResponse.redirect(new URL("/dashboard", req.url)));
   }
 
-  // 6. Default allow
+  //
+  // 4. ALLOW EVERYTHING ELSE
+  //
   return withPath(NextResponse.next());
 });
 
