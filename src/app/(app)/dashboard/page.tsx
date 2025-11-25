@@ -1,3 +1,4 @@
+// src/app/(app)/dashboard/page.tsx
 import prisma from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
@@ -35,9 +36,15 @@ function categoryFor(date: Date | null): Cat | null {
  * Ensure user has:
  *  - an active subscription
  *  - completed onboarding steps (welcome + upload)
- * Redirects if not.
+ *
+ * For dev bypass users, this is skipped entirely.
  */
-async function ensureSubscribedAndOnboarded(clerkUserId: string) {
+async function ensureSubscribedAndOnboarded(
+  clerkUserId: string,
+  isDevBypass: boolean
+) {
+  if (isDevBypass) return; // YOU ALWAYS PASS
+
   // 1) Subscription must be active
   const sub = await prisma.userSubscription.findUnique({
     where: { clerkUserId },
@@ -49,7 +56,7 @@ async function ensureSubscribedAndOnboarded(clerkUserId: string) {
     redirect("/settings/billing");
   }
 
-  // 2) Onboarding step from UserSettings
+  // 2) Check onboarding step
   const settings = await prisma.userSettings.findUnique({
     where: { clerkUserId },
     select: { onboardingStep: true },
@@ -57,27 +64,29 @@ async function ensureSubscribedAndOnboarded(clerkUserId: string) {
 
   const step = settings?.onboardingStep ?? 0;
 
-  // Step 0 = not started → /welcome
-  if (step < 1) {
-    redirect("/welcome");
-  }
-
-  // Step 1 = notifications saved but hasn't reached upload page → /upload
-  if (step < 2) {
-    redirect("/upload");
-  }
-
-  // Step >= 2 → allow dashboard
+  if (step < 1) redirect("/welcome");
+  if (step < 2) redirect("/upload");
 }
 
 export default async function DashboardPage() {
   const { userId } = await auth();
-  if (!userId) {
-    redirect("/login");
-  }
+  if (!userId) redirect("/login");
 
-  await ensureSubscribedAndOnboarded(userId!);
+  // ----------------------------
+  // MULTI-USER DEV BYPASS
+  // ----------------------------
+  const bypassList = (process.env.DEV_BYPASS_USER_IDS || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
 
+  const isDevBypass = bypassList.includes(userId);
+
+  await ensureSubscribedAndOnboarded(userId!, isDevBypass);
+
+  // ----------------------------
+  // LOAD CONTRACTS
+  // ----------------------------
   const contracts = await prisma.contract.findMany({
     where: { clerkUserId: userId!, deletedAt: null },
     orderBy: { renewalDate: "asc" },
@@ -114,6 +123,9 @@ export default async function DashboardPage() {
     { name: "90 days", value: due90, color: COLORS["90"] },
   ].filter((d) => d.value > 0);
 
+  // ----------------------------
+  // UI
+  // ----------------------------
   return (
     <PageContainer
       title="Dashboard"
@@ -132,11 +144,7 @@ export default async function DashboardPage() {
                 { label: "Expired", color: COLORS.expired, count: expired },
                 { label: "7 days", color: COLORS["7"], count: due7 },
                 { label: "30 days", color: COLORS["30"], count: due30 },
-                {
-                  label: "90 days",
-                  color: COLORS["90"],
-                  count: due90,
-                },
+                { label: "90 days", color: COLORS["90"], count: due90 },
               ].map((item) => (
                 <div key={item.label} className="flex items-center gap-2">
                   <span
@@ -178,8 +186,12 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Alerts + Search */}
-        <DashboardAlerts items={alertItems} colors={COLORS} defaultWindow="30" />
+        {/* Alerts */}
+        <DashboardAlerts
+          items={alertItems}
+          colors={COLORS}
+          defaultWindow="30"
+        />
       </div>
     </PageContainer>
   );

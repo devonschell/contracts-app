@@ -1,3 +1,4 @@
+// src/app/billing/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -47,26 +48,25 @@ export default function BillingPage() {
   };
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-white px-4">
+    <main className="min-h-screen flex flex-col items-center justify-center bg-background text-foreground px-4">
       <div className="max-w-4xl w-full">
         <header className="mb-10 text-center">
           <h1 className="text-3xl md:text-4xl font-semibold mb-3">
             Choose your OVIU plan
           </h1>
-          <p className="text-slate-300">
+          <p className="text-muted-foreground">
             Unlock AI-powered contract intelligence. You&apos;ll be charged
             securely via Stripe and can cancel anytime.
           </p>
         </header>
 
         {error && (
-          <div className="mb-6 rounded-xl border border-red-500/60 bg-red-500/10 px-4 py-3 text-sm">
+          <div className="mb-6 rounded-xl border border-red-500/60 bg-red-500/10 px-4 py-3 text-sm text-red-600">
             {error}
           </div>
         )}
 
         <div className="grid gap-6 md:grid-cols-3">
-          {/* Starter */}
           <PlanCard
             name="Starter"
             desc="For solo operators and small teams just getting started."
@@ -81,7 +81,6 @@ export default function BillingPage() {
             onSelect={() => handleCheckout("starter")}
           />
 
-          {/* Growth */}
           <PlanCard
             name="Growth"
             desc="For growing finance/legal teams who need more volume."
@@ -98,7 +97,6 @@ export default function BillingPage() {
             onSelect={() => handleCheckout("growth")}
           />
 
-          {/* Pro */}
           <PlanCard
             name="Pro"
             desc="For teams managing large contract portfolios."
@@ -115,7 +113,7 @@ export default function BillingPage() {
           />
         </div>
 
-        <p className="mt-6 text-xs text-slate-500 text-center">
+        <p className="mt-6 text-xs text-muted-foreground text-center">
           Already subscribed? Your access will unlock automatically after
           payment. You can manage your subscription at any time from the billing
           settings inside the app.
@@ -148,21 +146,21 @@ function PlanCard({
 }: PlanCardProps) {
   return (
     <div
-      className={`flex flex-col rounded-2xl border px-5 py-6 shadow-sm bg-slate-900/80 ${
+      className={`flex flex-col rounded-2xl border px-5 py-6 shadow-sm bg-card ${
         highlight
           ? "border-indigo-500 shadow-indigo-500/20"
-          : "border-slate-800"
+          : "border-border"
       }`}
     >
       <h2 className="text-lg font-semibold mb-1">{name}</h2>
-      <p className="text-xs text-slate-400 mb-4">{desc}</p>
+      <p className="text-xs text-muted-foreground mb-4">{desc}</p>
 
       <div className="flex items-baseline gap-1 mb-4">
         <span className="text-3xl font-bold">{price}</span>
-        <span className="text-xs text-slate-400">{period}</span>
+        <span className="text-xs text-muted-foreground">{period}</span>
       </div>
 
-      <ul className="flex-1 space-y-1.5 mb-4 text-xs text-slate-300">
+      <ul className="flex-1 space-y-1.5 mb-4 text-xs text-muted-foreground">
         {features.map((f) => (
           <li key={f}>• {f}</li>
         ))}
@@ -171,13 +169,13 @@ function PlanCard({
       <button
         onClick={onSelect}
         disabled={loading}
-        className={`mt-auto w-full rounded-xl px-3 py-2 text-sm font-medium ${
+        className={`mt-auto w-full rounded-xl px-3 py-2 text-sm font-medium text-white ${
           highlight
             ? "bg-indigo-500 hover:bg-indigo-600 disabled:bg-indigo-500/60"
             : "bg-slate-800 hover:bg-slate-700 disabled:bg-slate-800/60"
         }`}
       >
-        {loading ? "Redirecting to Stripe..." : "Continue to Stripe"}
+        {loading ? "Redirecting to Stripe..." : "Subscribe now"}
       </button>
     </div>
   );
