@@ -1,50 +1,45 @@
 // middleware.ts
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-// Public routes — no auth required
-const isPublic = createRouteMatcher([
-  "/",
-  "/login(.*)",
-  "/signup(.*)",
-  "/sign-in(.*)",
-  "/sign-up(.*)",
-  "/sso-callback(.*)",
-  "/oauth-callback(.*)",
-  "/auth-callback(.*)",
-  "/favicon.ico",
-  "/api/health",
-  "/api/webhooks/(.*)",
-  "/api/stripe/webhook",
-]);
-
 export default clerkMiddleware((auth, req) => {
-  const { userId } = auth();
+  const { userId, sessionId, redirectToSignIn } = auth();
   const path = req.nextUrl.pathname;
 
-  // 1) Always allow public routes (including "/")
-  if (isPublic(req)) {
+  // Public routes (no auth required)
+  const publicRoutes = [
+    "/",
+    "/login",
+    "/signup",
+    "/sign-in",
+    "/sign-up",
+    "/favicon.ico",
+  ];
+
+  const isPublic = publicRoutes.some((r) => path === r || path.startsWith(r));
+
+  // Allow public routes
+  if (isPublic) {
     return NextResponse.next();
   }
 
-  // 2) Everything else requires auth
-  if (!userId) {
-    if (path.startsWith("/api/")) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
-    const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("redirect_url", req.url);
-    return NextResponse.redirect(loginUrl);
+  // Protected API routes must return 401 instead of redirect
+  if (!userId && path.startsWith("/api/")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // 3) Authenticated → allow through
+  // Protected UI routes redirect to /login
+  if (!userId) {
+    return redirectToSignIn({ returnBackUrl: req.url });
+  }
+
   return NextResponse.next();
 });
 
+// VERY IMPORTANT NEXT CONFIG
 export const config = {
-  matcher: ["/((?!_next|.*\\..*).*)", "/(api)(.*)"],
+  matcher: [
+    "/((?!_next|.*\\..*).*)",
+    "/(api)(.*)",
+  ],
 };
