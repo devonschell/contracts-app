@@ -1,7 +1,8 @@
+// middleware.ts
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-// Public routes — Clerk MUST be allowed to load these
+// Public routes — no auth required
 const isPublic = createRouteMatcher([
   "/",
   "/login(.*)",
@@ -21,16 +22,26 @@ export default clerkMiddleware((auth, req) => {
   const { userId } = auth();
   const path = req.nextUrl.pathname;
 
-  // Always allow Clerk’s public routes + landing page
-  if (isPublic(req)) return NextResponse.next();
-
-  // Require auth for everything else
-  if (!userId) {
-    const login = new URL("/login", req.url);
-    login.searchParams.set("redirect_url", req.url);
-    return NextResponse.redirect(login);
+  // 1) Always allow public routes (including "/")
+  if (isPublic(req)) {
+    return NextResponse.next();
   }
 
+  // 2) Everything else requires auth
+  if (!userId) {
+    if (path.startsWith("/api/")) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const loginUrl = new URL("/login", req.url);
+    loginUrl.searchParams.set("redirect_url", req.url);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // 3) Authenticated → allow through
   return NextResponse.next();
 });
 

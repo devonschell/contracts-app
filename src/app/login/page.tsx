@@ -1,3 +1,4 @@
+// src/app/login/page.tsx
 "use client";
 
 import { SignIn } from "@clerk/nextjs";
@@ -7,7 +8,11 @@ export const dynamic = "force-dynamic";
 export default function LoginPage() {
   return (
     <div className="min-h-[60vh] grid place-items-center p-6">
-      <SignIn routing="hash" />
+      <SignIn
+        routing="hash"
+        afterSignInUrl="/dashboard"
+        afterSignUpUrl="/dashboard"
+      />
     </div>
   );
 }

@@ -1,25 +1,37 @@
+// src/app/HomeLandingClient.tsx
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 
-export default function HomeLandingClient({ loggedIn = false }) {
+type Props = {
+  loggedIn: boolean;
+};
+
+export default function HomeLandingClient({ loggedIn }: Props) {
   const router = useRouter();
 
-  // ---------------------------------------
-  // If logged in → redirect to dashboard
-  // (Client-side only — prevents Clerk loops)
-  // ---------------------------------------
-  useEffect(() => {
+  const handleSignInClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
     if (loggedIn) {
-      router.replace("/dashboard");
+      router.push("/dashboard");
+    } else {
+      router.push("/login");
     }
-  }, [loggedIn]);
+  };
 
-  // Prevent rendering landing page for a moment
-  if (loggedIn) return null;
+  const handlePrimaryCtaClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    if (loggedIn) {
+      router.push("/dashboard");
+    } else {
+      router.push("/signup");
+    }
+  };
+
+  const headerButtonLabel = loggedIn ? "Go to dashboard" : "Sign In";
+  const heroButtonLabel = loggedIn ? "Go to dashboard" : "Get Started Free";
 
   return (
     <main className="min-h-screen bg-white text-slate-900 flex flex-col">
@@ -51,12 +63,13 @@ export default function HomeLandingClient({ loggedIn = false }) {
             </Link>
           </nav>
 
-          {/* Sign In */}
+          {/* Sign In / Go to dashboard */}
           <Link
-            href="/login"
+            href={loggedIn ? "/dashboard" : "/login"}
+            onClick={handleSignInClick}
             className="rounded-md bg-[var(--primary)] px-4 py-2 text-white text-sm font-medium hover:bg-[var(--accent)] transition"
           >
-            Sign In
+            {headerButtonLabel}
           </Link>
         </div>
       </header>
@@ -72,10 +85,11 @@ export default function HomeLandingClient({ loggedIn = false }) {
           nothing slips through the cracks.
         </p>
         <Link
-          href="/signup"
+          href={loggedIn ? "/dashboard" : "/signup"}
+          onClick={handlePrimaryCtaClick}
           className="bg-[var(--primary)] hover:bg-[var(--accent)] text-white font-medium rounded-md px-6 py-3 text-lg transition"
         >
-          Get Started Free
+          {heroButtonLabel}
         </Link>
 
         {/* Screenshot */}
@@ -162,7 +176,8 @@ export default function HomeLandingClient({ loggedIn = false }) {
                 </p>
                 <div className="text-4xl font-bold mb-6">${tier.price}/mo</div>
                 <Link
-                  href="/signup"
+                  href={loggedIn ? "/dashboard" : "/signup"}
+                  onClick={handlePrimaryCtaClick}
                   className="bg-[var(--primary)] hover:bg-[var(--accent)] text-white font-medium rounded-md px-4 py-2 text-sm transition"
                 >
                   Start Free
