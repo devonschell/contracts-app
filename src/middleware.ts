@@ -4,53 +4,40 @@ import { NextResponse } from "next/server";
 
 export default clerkMiddleware(async (auth, req) => {
   const { userId } = auth();
-  const path = req.nextUrl.pathname;
+  const url = req.nextUrl;
+  const path = url.pathname;
 
-  // ------------------------------------
-  // PUBLIC ROUTES (do not require auth)
-  // ------------------------------------
-  const publicRoutes = [
-    "/",
+  // -----------------------------------------
+  // PUBLIC ROUTES (match prefix ONLY)
+  // -----------------------------------------
+  const PUBLIC_PREFIXES = [
     "/login",
     "/signup",
     "/sign-in",
     "/sign-up",
     "/favicon.ico",
-  ];
-
-  const publicApiRoutes = [
     "/api/stripe/webhook",
     "/api/health",
     "/api/cron",
   ];
 
-  const isApiRoute = path.startsWith("/api/");
-  const isPublicRoute = publicRoutes.some(
-    (route) => path === route || path.startsWith(route + "/")
-  );
-  const isPublicApiRoute = publicApiRoutes.some(
-    (route) => path === route || path.startsWith(route + "/")
-  );
+  const isPublic = PUBLIC_PREFIXES.some((route) => path.startsWith(route));
 
-  if (isPublicRoute || isPublicApiRoute) {
+  if (isPublic) {
     return NextResponse.next();
   }
 
-  // ------------------------------------
-  // NOT LOGGED IN → redirect to /login
-  // ------------------------------------
+  // -----------------------------------------
+  // NOT LOGGED IN → redirect to clean /login
+  // -----------------------------------------
   if (!userId) {
-    if (isApiRoute) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // ❗ IMPORTANT: Do NOT use redirect_url — this caused your redirect loop
-    return NextResponse.redirect(new URL("/login", req.url));
+    const clean = new URL("/login", req.url);
+    return NextResponse.redirect(clean);
   }
 
-  // ------------------------------------
-  // DEV BYPASS (multiple users supported)
-  // ------------------------------------
+  // -----------------------------------------
+  // DEV BYPASS
+  // -----------------------------------------
   const bypassIds: string[] = [];
 
   if (process.env.DEV_BYPASS_USER_ID) {
@@ -65,78 +52,60 @@ export default clerkMiddleware(async (auth, req) => {
     );
   }
 
-  const isDevBypass = bypassIds.includes(userId);
+  const isDev = bypassIds.includes(userId);
 
-  if (isDevBypass) {
-    // Devs always land on dashboard from "/" 
+  if (isDev) {
     if (path === "/") {
-      const url = req.nextUrl.clone();
-      url.pathname = "/dashboard";
-      return NextResponse.redirect(url);
+      const dash = url.clone();
+      dash.pathname = "/dashboard";
+      return NextResponse.redirect(dash);
     }
-
-    // Dev bypass skips subscription completely
     return NextResponse.next();
   }
 
-  // ------------------------------------
-  // REAL USERS → CHECK SUBSCRIPTION
-  // ------------------------------------
-  const isBillingUI = path === "/billing" || path.startsWith("/billing/");
-  const isBillingApi =
-    path === "/api/billing" || path.startsWith("/api/billing/");
+  // -----------------------------------------
+  // SUBSCRIPTION CHECK
+  // -----------------------------------------
+  const origin = url.origin;
+  const isBillingUI = path.startsWith("/billing");
+  const isBillingAPI = path.startsWith("/api/billing");
 
   let subscribed = false;
-
   try {
-    const origin = req.nextUrl.origin;
     const res = await fetch(`${origin}/api/billing`, {
       method: "GET",
       headers: { Cookie: req.headers.get("cookie") || "" },
     });
-    const data = res.ok ? await res.json() : { subscribed: false };
+    const data = await res.json();
     subscribed = !!data.subscribed;
-  } catch (err) {
-    console.error("Billing check failed:", err);
+  } catch {
     subscribed = false;
   }
 
-  // ------------------------------------
-  // UNSUBSCRIBED USERS → force /billing
-  // ------------------------------------
+  // -----------------------------------------
+  // NO SUBSCRIPTION → show billing page ONLY
+  // -----------------------------------------
   if (!subscribed) {
-    // Allow billing screens & billing API
-    if (isBillingUI || isBillingApi) {
-      return NextResponse.next();
-    }
+    if (isBillingUI || isBillingAPI) return NextResponse.next();
 
-    // Block all other pages
-    if (isApiRoute) {
-      return NextResponse.json({ error: "Payment required" }, { status: 402 });
-    }
-
-    const url = req.nextUrl.clone();
-    url.pathname = "/billing";
-    url.search = "";
-    return NextResponse.redirect(url);
+    const bill = url.clone();
+    bill.pathname = "/billing";
+    bill.search = "";
+    return NextResponse.redirect(bill);
   }
 
-  // ------------------------------------
+  // -----------------------------------------
   // SUBSCRIBED USERS: "/" → dashboard
-  // ------------------------------------
+  // -----------------------------------------
   if (path === "/") {
-    const url = req.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
+    const dash = url.clone();
+    dash.pathname = "/dashboard";
+    return NextResponse.redirect(dash);
   }
 
-  // Everything else allowed
   return NextResponse.next();
 });
 
 export const config = {
-  matcher: [
-    "/((?!_next|.*\\..*).*)",
-    "/(api)(.*)",
-  ],
+  matcher: ["/((?!_next|.*\\..*).*)", "/(api)(.*)"],
 };
