@@ -1,4 +1,3 @@
-// src/middleware.ts
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
@@ -8,9 +7,10 @@ export default clerkMiddleware(async (auth, req) => {
   const path = url.pathname;
 
   // -----------------------------------------
-  // PUBLIC ROUTES (match prefix ONLY)
+  // PUBLIC ROUTES — NO AUTH, NO SUB CHECK
   // -----------------------------------------
   const PUBLIC_PREFIXES = [
+    "/",                     // ← landing page must be public
     "/login",
     "/signup",
     "/sign-in",
@@ -21,22 +21,24 @@ export default clerkMiddleware(async (auth, req) => {
     "/api/cron",
   ];
 
-  const isPublic = PUBLIC_PREFIXES.some((route) => path.startsWith(route));
+  const isPublic = PUBLIC_PREFIXES.some((route) =>
+    path === route || path.startsWith(route)
+  );
 
   if (isPublic) {
     return NextResponse.next();
   }
 
   // -----------------------------------------
-  // NOT LOGGED IN → redirect to clean /login
+  // NOT LOGGED IN → redirect to /login
   // -----------------------------------------
   if (!userId) {
-    const clean = new URL("/login", req.url);
-    return NextResponse.redirect(clean);
+    const cleanLogin = new URL("/login", req.url);
+    return NextResponse.redirect(cleanLogin);
   }
 
   // -----------------------------------------
-  // DEV BYPASS
+  // DEV BYPASS — SKIP BILLING + ONBOARDING
   // -----------------------------------------
   const bypassIds: string[] = [];
 
@@ -55,24 +57,27 @@ export default clerkMiddleware(async (auth, req) => {
   const isDev = bypassIds.includes(userId);
 
   if (isDev) {
+    // Dev lands on dashboard when visiting "/"
     if (path === "/") {
       const dash = url.clone();
       dash.pathname = "/dashboard";
       return NextResponse.redirect(dash);
     }
+
+    // Dev can access EVERYTHING — skip billing
     return NextResponse.next();
   }
 
   // -----------------------------------------
-  // SUBSCRIPTION CHECK
+  // REAL USERS → CHECK SUBSCRIPTION STATUS
   // -----------------------------------------
-  const origin = url.origin;
   const isBillingUI = path.startsWith("/billing");
   const isBillingAPI = path.startsWith("/api/billing");
 
   let subscribed = false;
+
   try {
-    const res = await fetch(`${origin}/api/billing`, {
+    const res = await fetch(`${url.origin}/api/billing`, {
       method: "GET",
       headers: { Cookie: req.headers.get("cookie") || "" },
     });
@@ -83,11 +88,13 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   // -----------------------------------------
-  // NO SUBSCRIPTION → show billing page ONLY
+  // UNSUBSCRIBED USERS → force /billing
   // -----------------------------------------
   if (!subscribed) {
+    // Allow them to access the billing pages + billing API
     if (isBillingUI || isBillingAPI) return NextResponse.next();
 
+    // Block everything else
     const bill = url.clone();
     bill.pathname = "/billing";
     bill.search = "";
@@ -95,7 +102,8 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   // -----------------------------------------
-  // SUBSCRIBED USERS: "/" → dashboard
+  // SUBSCRIBED USERS
+  // "/" should go to /dashboard
   // -----------------------------------------
   if (path === "/") {
     const dash = url.clone();
@@ -106,6 +114,7 @@ export default clerkMiddleware(async (auth, req) => {
   return NextResponse.next();
 });
 
+// Ensure middleware applies everywhere except static assets
 export const config = {
   matcher: ["/((?!_next|.*\\..*).*)", "/(api)(.*)"],
 };
