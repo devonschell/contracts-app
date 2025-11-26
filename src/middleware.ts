@@ -6,9 +6,9 @@ export default clerkMiddleware(async (auth, req) => {
   const { userId } = auth();
   const path = req.nextUrl.pathname;
 
-  // ----------------------------
-  // PUBLIC ROUTES
-  // ----------------------------
+  // ------------------------------------
+  // PUBLIC ROUTES (do not require auth)
+  // ------------------------------------
   const publicRoutes = [
     "/",
     "/login",
@@ -36,59 +36,64 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.next();
   }
 
-  // ----------------------------
-  // NOT LOGGED IN
-  // ----------------------------
+  // ------------------------------------
+  // NOT LOGGED IN → redirect to /login
+  // ------------------------------------
   if (!userId) {
     if (isApiRoute) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const loginUrl = new URL("/login", req.url);
-    loginUrl.searchParams.set("redirect_url", req.url);
-    return NextResponse.redirect(loginUrl);
+    // ❗ IMPORTANT: Do NOT use redirect_url — this caused your redirect loop
+    return NextResponse.redirect(new URL("/login", req.url));
   }
 
-  // ----------------------------
-  // MULTI-USER DEV BYPASS
-  // ----------------------------
-  const bypassList = (process.env.DEV_BYPASS_USER_IDS || "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
+  // ------------------------------------
+  // DEV BYPASS (multiple users supported)
+  // ------------------------------------
+  const bypassIds: string[] = [];
 
-  const isDevBypass = bypassList.includes(userId);
+  if (process.env.DEV_BYPASS_USER_ID) {
+    bypassIds.push(process.env.DEV_BYPASS_USER_ID.trim());
+  }
+
+  if (process.env.DEV_BYPASS_USER_IDS) {
+    bypassIds.push(
+      ...process.env.DEV_BYPASS_USER_IDS.split(",")
+        .map((id) => id.trim())
+        .filter(Boolean)
+    );
+  }
+
+  const isDevBypass = bypassIds.includes(userId);
 
   if (isDevBypass) {
-    // If dev hits "/", push to dashboard automatically
+    // Devs always land on dashboard from "/" 
     if (path === "/") {
       const url = req.nextUrl.clone();
       url.pathname = "/dashboard";
       return NextResponse.redirect(url);
     }
 
-    // Skip Stripe entirely
+    // Dev bypass skips subscription completely
     return NextResponse.next();
   }
 
-  // ----------------------------
-  // REAL USERS — CHECK SUBSCRIPTION
-  // ----------------------------
-  const isBillingUI = path.startsWith("/billing");
-  const isBillingApi = path.startsWith("/api/billing");
+  // ------------------------------------
+  // REAL USERS → CHECK SUBSCRIPTION
+  // ------------------------------------
+  const isBillingUI = path === "/billing" || path.startsWith("/billing/");
+  const isBillingApi =
+    path === "/api/billing" || path.startsWith("/api/billing/");
 
   let subscribed = false;
 
   try {
     const origin = req.nextUrl.origin;
-
     const res = await fetch(`${origin}/api/billing`, {
       method: "GET",
-      headers: {
-        Cookie: req.headers.get("cookie") || "",
-      },
+      headers: { Cookie: req.headers.get("cookie") || "" },
     });
-
     const data = res.ok ? await res.json() : { subscribed: false };
     subscribed = !!data.subscribed;
   } catch (err) {
@@ -96,11 +101,18 @@ export default clerkMiddleware(async (auth, req) => {
     subscribed = false;
   }
 
-  // UNSUBSCRIBED USERS
+  // ------------------------------------
+  // UNSUBSCRIBED USERS → force /billing
+  // ------------------------------------
   if (!subscribed) {
-    // Allow billing pages
+    // Allow billing screens & billing API
     if (isBillingUI || isBillingApi) {
       return NextResponse.next();
+    }
+
+    // Block all other pages
+    if (isApiRoute) {
+      return NextResponse.json({ error: "Payment required" }, { status: 402 });
     }
 
     const url = req.nextUrl.clone();
@@ -109,13 +121,16 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(url);
   }
 
-  // SUBSCRIBED USERS: landing → dashboard
+  // ------------------------------------
+  // SUBSCRIBED USERS: "/" → dashboard
+  // ------------------------------------
   if (path === "/") {
     const url = req.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
   }
 
+  // Everything else allowed
   return NextResponse.next();
 });
 

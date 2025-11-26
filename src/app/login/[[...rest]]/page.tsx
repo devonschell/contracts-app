@@ -1,41 +1,49 @@
+// src/app/login/[[...rest]]/page.tsx
 "use client";
 
 import { SignIn, useUser } from "@clerk/nextjs";
-import { useSearchParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function LoginPage() {
-  const { isSignedIn } = useUser();
+  const { isLoaded, isSignedIn } = useUser();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [mounted, setMounted] = useState(false);
 
-  // Avoid hydration issues
-  useEffect(() => setMounted(true), []);
-  if (!mounted) return null;
-
-  // FIX: Only redirect if coming directly to /login WHILE signed in.
+  // 1️⃣ Wait for Clerk to load before making any decisions
   useEffect(() => {
-    if (!isSignedIn) return;
+    if (!isLoaded) return;
 
-    // DO NOT use the redirect_url param — that causes a loop.
-    router.replace("/dashboard");
-  }, [isSignedIn, router]);
+    // 2️⃣ If user is signed in, redirect OUTSIDE the render phase
+    if (isSignedIn) {
+      router.replace("/dashboard");
+    }
+  }, [isLoaded, isSignedIn, router]);
 
+  // 3️⃣ Clerk still loading
+  if (!isLoaded) {
+    return (
+      <div className="h-screen grid place-items-center">
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </div>
+    );
+  }
+
+  // 4️⃣ Signed-in users will be redirected by the effect above
   if (isSignedIn) {
     return (
-      <div className="min-h-[60vh] grid place-items-center p-6">
+      <div className="h-screen grid place-items-center">
         <p className="text-sm text-muted-foreground">Redirecting…</p>
       </div>
     );
   }
 
+  // 5️⃣ Signed-out users get Clerk UI
   return (
-    <div className="min-h-[60vh] grid place-items-center p-6">
+    <div className="h-screen grid place-items-center">
       <SignIn
         routing="path"
-        fallbackRedirectUrl="/dashboard"
-        forceRedirectUrl="/dashboard"
+        signInFallbackRedirectUrl="/dashboard"
+        signUpFallbackRedirectUrl="/welcome"
       />
     </div>
   );
