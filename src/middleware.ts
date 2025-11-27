@@ -6,74 +6,75 @@ export default clerkMiddleware(async (auth, req) => {
   const url = req.nextUrl;
   const path = url.pathname;
 
-  // -----------------------------------------
-  // PUBLIC ROUTES — NO AUTH, NO SUB CHECK
-  // -----------------------------------------
-  const PUBLIC_PREFIXES = [
-    "/",                     // ← landing page must be public
-    "/login",
-    "/signup",
-    "/sign-in",
-    "/sign-up",
-    "/favicon.ico",
-    "/api/stripe/webhook",
-    "/api/health",
-    "/api/cron",
-  ];
+  // ----------------------------
+  // ROUTE GROUPS
+  // ----------------------------
+  const AUTH_ROUTES = ["/login", "/signup", "/sign-in", "/sign-up"];
+  const isAuthRoute = AUTH_ROUTES.some((r) => path === r || path.startsWith(r));
 
-  const isPublic = PUBLIC_PREFIXES.some((route) =>
-    path === route || path.startsWith(route)
-  );
+  const isRoot = path === "/";
+  const isBillingUI = path.startsWith("/billing");
+  const isBillingAPI = path.startsWith("/api/billing");
+  const isSettings = path.startsWith("/settings"); // NEW
 
-  if (isPublic) {
-    return NextResponse.next();
-  }
+  const isPublicEndpoint =
+    path.startsWith("/api/stripe/webhook") ||
+    path.startsWith("/api/health") ||
+    path.startsWith("/api/cron");
 
-  // -----------------------------------------
-  // NOT LOGGED IN → redirect to /login
-  // -----------------------------------------
+  const isStatic =
+    path.startsWith("/_next") ||
+    path.startsWith("/favicon.ico") ||
+    path.match(/\.[a-zA-Z0-9]+$/);
+
+  // ----------------------------
+  // ALWAYS PUBLIC (STATIC + WEBHOOKS)
+  // ----------------------------
+  if (isStatic || isPublicEndpoint) return NextResponse.next();
+
+  // ----------------------------
+  // LOGGED OUT USERS
+  // ----------------------------
   if (!userId) {
-    const cleanLogin = new URL("/login", req.url);
-    return NextResponse.redirect(cleanLogin);
+    // Landing + login/signup allowed
+    if (isRoot || isAuthRoute) return NextResponse.next();
+
+    if (path.startsWith("/api/")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const login = url.clone();
+    login.pathname = "/login";
+    login.search = "";
+    return NextResponse.redirect(login);
   }
 
-  // -----------------------------------------
-  // DEV BYPASS — SKIP BILLING + ONBOARDING
-  // -----------------------------------------
+  // ----------------------------
+  // DEV BYPASS
+  // ----------------------------
   const bypassIds: string[] = [];
-
-  if (process.env.DEV_BYPASS_USER_ID) {
+  if (process.env.DEV_BYPASS_USER_ID)
     bypassIds.push(process.env.DEV_BYPASS_USER_ID.trim());
-  }
-
-  if (process.env.DEV_BYPASS_USER_IDS) {
+  if (process.env.DEV_BYPASS_USER_IDS)
     bypassIds.push(
       ...process.env.DEV_BYPASS_USER_IDS.split(",")
         .map((id) => id.trim())
         .filter(Boolean)
     );
-  }
 
   const isDev = bypassIds.includes(userId);
-
   if (isDev) {
-    // Dev lands on dashboard when visiting "/"
-    if (path === "/") {
+    if (isRoot || isAuthRoute) {
       const dash = url.clone();
       dash.pathname = "/dashboard";
       return NextResponse.redirect(dash);
     }
-
-    // Dev can access EVERYTHING — skip billing
     return NextResponse.next();
   }
 
-  // -----------------------------------------
-  // REAL USERS → CHECK SUBSCRIPTION STATUS
-  // -----------------------------------------
-  const isBillingUI = path.startsWith("/billing");
-  const isBillingAPI = path.startsWith("/api/billing");
-
+  // ----------------------------
+  // REAL USER → CHECK SUB
+  // ----------------------------
   let subscribed = false;
 
   try {
@@ -87,34 +88,50 @@ export default clerkMiddleware(async (auth, req) => {
     subscribed = false;
   }
 
-  // -----------------------------------------
-  // UNSUBSCRIBED USERS → force /billing
-  // -----------------------------------------
+  // ----------------------------
+  // LOGGED IN BUT NOT SUBSCRIBED
+  // ----------------------------
   if (!subscribed) {
-    // Allow them to access the billing pages + billing API
+    // Billing + billing API allowed
     if (isBillingUI || isBillingAPI) return NextResponse.next();
 
-    // Block everything else
+    // Landing allowed (marketing page)
+    if (isRoot) return NextResponse.next();
+
+    // Login/Signup clicked while logged-in → send to billing
+    if (isAuthRoute) {
+      const bill = url.clone();
+      bill.pathname = "/billing";
+      return NextResponse.redirect(bill);
+    }
+
+    // Settings requires subscription
+    if (isSettings) {
+      const bill = url.clone();
+      bill.pathname = "/billing";
+      return NextResponse.redirect(bill);
+    }
+
+    // Everything else (dashboard, upload, contracts, etc.) → billing
     const bill = url.clone();
     bill.pathname = "/billing";
-    bill.search = "";
     return NextResponse.redirect(bill);
   }
 
-  // -----------------------------------------
-  // SUBSCRIBED USERS
-  // "/" should go to /dashboard
-  // -----------------------------------------
-  if (path === "/") {
+  // ----------------------------
+  // LOGGED IN + SUBSCRIBED
+  // ----------------------------
+  // Never show landing or login/signup
+  if (isRoot || isAuthRoute) {
     const dash = url.clone();
     dash.pathname = "/dashboard";
     return NextResponse.redirect(dash);
   }
 
+  // Everything else allowed
   return NextResponse.next();
 });
 
-// Ensure middleware applies everywhere except static assets
 export const config = {
   matcher: ["/((?!_next|.*\\..*).*)", "/(api)(.*)"],
 };

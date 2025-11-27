@@ -1,48 +1,34 @@
-import Link from "next/link";
-import PageContainer from "@/components/PageContainer";
+// src/app/page.tsx
+import { auth } from "@clerk/nextjs/server";
+import HomeLandingClient from "./HomeLandingClient";   // ← FIXED (ADD THIS)
 
-export const dynamic = "force-dynamic";
+export default async function HomePage() {
+  const { userId } = await auth();
 
-export default function SettingsHome() {
+  if (!userId) {
+    return <HomeLandingClient loggedIn={false} subscribed={false} />;
+  }
+
+  // If logged in → check subscription
+  let subscribed = false;
+
+  try {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL}/api/billing`, {
+      method: "GET",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const data = await res.json();
+    subscribed = !!data.subscribed;
+  } catch {
+    subscribed = false;
+  }
+
   return (
-    <PageContainer
-      title="Settings"
-      description="Manage your company profile, notifications, and billing details."
-    >
-      <div className="grid gap-4 sm:grid-cols-2">
-        {/* Profile */}
-        <Link
-          href="/settings/profile"
-          className="rounded-lg border border-border bg-card p-4 shadow-sm transition hover:shadow-md"
-        >
-          <div className="text-sm font-semibold text-foreground">Profile</div>
-          <div className="mt-1 text-sm text-muted-foreground">
-            Company name, billing email, timezone, currency, and default renewal lead days.
-          </div>
-        </Link>
-
-        {/* Notifications */}
-        <Link
-          href="/settings/notifications"
-          className="rounded-lg border border-border bg-card p-4 shadow-sm transition hover:shadow-md"
-        >
-          <div className="text-sm font-semibold text-foreground">Notifications</div>
-          <div className="mt-1 text-sm text-muted-foreground">
-            Who gets renewal reminders and how often (coming soon).
-          </div>
-        </Link>
-
-        {/* Billing */}
-        <Link
-          href="/settings/billing"
-          className="rounded-lg border border-border bg-card p-4 shadow-sm transition hover:shadow-md sm:col-span-2 lg:col-span-1"
-        >
-          <div className="text-sm font-semibold text-foreground">Billing</div>
-          <div className="mt-1 text-sm text-muted-foreground">
-            Plan, payment method, and invoices (coming soon).
-          </div>
-        </Link>
-      </div>
-    </PageContainer>
+    <HomeLandingClient
+      loggedIn={true}
+      subscribed={subscribed}
+    />
   );
 }

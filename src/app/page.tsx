@@ -1,15 +1,37 @@
+// src/app/page.tsx
 import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
-import HomeLandingClient from "./HomeLandingClient";
 
 export default async function HomePage() {
   const { userId } = await auth();
 
-  // Logged-in users should NOT see the marketing site
-  if (userId) {
-    redirect("/dashboard");
+  // Logged out → just show landing with simple props
+  if (!userId) {
+    return (
+      // subscribed = false
+      <HomeLandingClient loggedIn={false} subscribed={false} />
+    );
   }
 
-  // Logged-out users see marketing landing page
-  return <HomeLandingClient loggedIn={false} />;
+  // Logged in → fetch subscription status
+  let subscribed = false;
+
+  try {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL}/api/billing`, {
+      method: "GET",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const data = await res.json();
+    subscribed = !!data.subscribed;
+  } catch {
+    subscribed = false;
+  }
+
+  return (
+    <HomeLandingClient
+      loggedIn={true}
+      subscribed={subscribed}
+    />
+  );
 }
