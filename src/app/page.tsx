@@ -1,18 +1,14 @@
 // src/app/page.tsx
 import { auth } from "@clerk/nextjs/server";
+import HomeLandingClient from "./HomeLandingClient";   // ← THIS LINE WAS MISSING
 
 export default async function HomePage() {
   const { userId } = await auth();
 
-  // Logged out → just show landing with simple props
   if (!userId) {
-    return (
-      // subscribed = false
-      <HomeLandingClient loggedIn={false} subscribed={false} />
-    );
+    return <HomeLandingClient loggedIn={false} subscribed={false} />;
   }
 
-  // Logged in → fetch subscription status
   let subscribed = false;
 
   try {
@@ -28,10 +24,5 @@ export default async function HomePage() {
     subscribed = false;
   }
 
-  return (
-    <HomeLandingClient
-      loggedIn={true}
-      subscribed={subscribed}
-    />
-  );
+  return <HomeLandingClient loggedIn={true} subscribed={subscribed} />;
 }
