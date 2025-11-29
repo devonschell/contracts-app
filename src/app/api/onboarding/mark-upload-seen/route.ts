@@ -1,33 +1,28 @@
-// src/app/api/onboarding/mark-upload-seen/route.ts
-import "server-only";
+// src/app/api/onboarding/route.ts
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import prisma from "@/lib/prisma";
+import { updateOnboardingStep } from "@/lib/clerk-helpers";
 
-export const runtime = "nodejs";
-
-export async function POST() {
+export async function POST(req: Request) {
   const { userId } = await auth();
+
   if (!userId) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const existing = await prisma.userSettings.findUnique({
-    where: { clerkUserId: userId },
-    select: { onboardingStep: true },
-  });
+  try {
+    const body = await req.json();
+    const { step } = body;
 
-  const current = existing?.onboardingStep ?? 0;
-  const next = current >= 2 ? current : 2;
+    if (typeof step !== "number" || step < 0 || step > 3) {
+      return NextResponse.json({ error: "Invalid step" }, { status: 400 });
+    }
 
-  await prisma.userSettings.upsert({
-    where: { clerkUserId: userId },
-    update: { onboardingStep: next },
-    create: {
-      clerkUserId: userId,
-      onboardingStep: next,
-    },
-  });
+    await updateOnboardingStep(userId, step);
 
-  return NextResponse.json({ ok: true, onboardingStep: next });
+    return NextResponse.json({ success: true, step });
+  } catch (error) {
+    console.error("Onboarding update error:", error);
+    return NextResponse.json({ error: "Failed to update" }, { status: 500 });
+  }
 }

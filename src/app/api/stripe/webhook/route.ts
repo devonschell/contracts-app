@@ -1,7 +1,9 @@
+// src/app/api/stripe/webhook/route.ts
 import { headers } from "next/headers";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import prisma from "@/lib/prisma";
+import { clerkClient } from "@clerk/nextjs/server";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-06-20",
@@ -9,16 +11,48 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 // Map priceId → allowedEmails
 const PLAN_LIMITS: Record<string, number> = {
-  // Replace with your real Stripe Price IDs
   [process.env.STRIPE_PRICE_STARTER!]: 1,
   [process.env.STRIPE_PRICE_GROWTH!]: 5,
   [process.env.STRIPE_PRICE_PRO!]: 15,
 };
 
+// Helper: Update Clerk user metadata
+async function updateClerkMetadata(
+  clerkUserId: string,
+  data: { subscriptionStatus?: string; onboardingStep?: number }
+) {
+  try {
+    const client = await clerkClient();
+    await client.users.updateUserMetadata(clerkUserId, {
+      publicMetadata: data,
+    });
+    console.log(`✅ Clerk metadata updated for ${clerkUserId}:`, data);
+  } catch (err) {
+    console.error(`❌ Failed to update Clerk metadata for ${clerkUserId}:`, err);
+  }
+}
+
+// Helper: Get clerkUserId from Stripe customer
+async function getClerkUserIdFromCustomer(customerId: string): Promise<string | null> {
+  try {
+    const sub = await prisma.userSubscription.findFirst({
+      where: { stripeCustomerId: customerId },
+      select: { clerkUserId: true },
+    });
+    return sub?.clerkUserId ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: Request) {
   const body = await req.text();
-  const sig = headers().get("stripe-signature");
-  if (!sig) return new NextResponse("Missing signature", { status: 400 });
+  const headersList = await headers();
+  const sig = headersList.get("stripe-signature");
+
+  if (!sig) {
+    return new NextResponse("Missing signature", { status: 400 });
+  }
 
   let event: Stripe.Event;
   try {
@@ -27,50 +61,45 @@ export async function POST(req: Request) {
       sig,
       process.env.STRIPE_WEBHOOK_SECRET!
     );
-  } catch (err: any) {
-    console.error("Webhook signature verification failed:", err.message);
-    return new NextResponse(`Webhook Error: ${err.message}`, { status: 400 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    console.error("Webhook signature verification failed:", message);
+    return new NextResponse(`Webhook Error: ${message}`, { status: 400 });
   }
 
   try {
     switch (event.type) {
-      //
-      // ----------------------------------------------------
-      // 🔥 When checkout finishes (user pays)
-      // ----------------------------------------------------
-      //
+      // --------------------------------------------------------
+      // 🔥 CHECKOUT COMPLETED (user pays for first time)
+      // --------------------------------------------------------
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
 
-        // Expand line items to get priceId cleanly
-        const full = await stripe.checkout.sessions.retrieve(String(session.id), {
+        // Expand line items to get priceId
+        const full = await stripe.checkout.sessions.retrieve(session.id, {
           expand: ["line_items"],
         });
 
         const customerId = full.customer as string | undefined;
 
-        // Get clerkUserId from session metadata or customer.metadata
-        let clerkUserId =
-          (full.metadata?.clerkUserId as string | undefined) || undefined;
+        // Get clerkUserId from metadata
+        let clerkUserId = full.metadata?.clerkUserId as string | undefined;
 
         if (!clerkUserId && customerId) {
           const customer = (await stripe.customers.retrieve(
             customerId
           )) as Stripe.Customer;
-          clerkUserId =
-            (customer.metadata?.clerkUserId as string | undefined) || undefined;
+          clerkUserId = customer.metadata?.clerkUserId as string | undefined;
         }
 
         const priceId = full.line_items?.data?.[0]?.price?.id;
 
         if (!clerkUserId) {
-          console.warn(
-            "No clerkUserId on checkout.session.completed — cannot assign plan"
-          );
+          console.warn("⚠️ No clerkUserId on checkout.session.completed");
           break;
         }
 
-        // Save subscription row
+        // Save to Prisma: UserSubscription
         await prisma.userSubscription.upsert({
           where: { clerkUserId },
           update: {
@@ -86,16 +115,13 @@ export async function POST(req: Request) {
           },
         });
 
-        // ----------------------------------------------------
-        // NEW PART: create/update onboarding + plan limits
-        // ----------------------------------------------------
-
-        const allowedEmails = PLAN_LIMITS[priceId ?? ""] ?? 1; // default safety
+        // Save to Prisma: UserSettings (onboarding + plan limits)
+        const allowedEmails = PLAN_LIMITS[priceId ?? ""] ?? 1;
 
         await prisma.userSettings.upsert({
           where: { clerkUserId },
           update: {
-            onboardingStep: 1, // user must begin onboarding
+            onboardingStep: 1,
             allowedEmails,
           },
           create: {
@@ -105,37 +131,108 @@ export async function POST(req: Request) {
           },
         });
 
+        // 🔥 UPDATE CLERK METADATA (this is the key!)
+        await updateClerkMetadata(clerkUserId, {
+          subscriptionStatus: "active",
+          onboardingStep: 1,
+        });
+
+        console.log(`✅ Checkout complete for ${clerkUserId}, plan: ${priceId}`);
         break;
       }
 
-      //
-      // ----------------------------------------------------
-      // 🔥 When subscription is updated or deleted
-      // ----------------------------------------------------
-      //
-      case "customer.subscription.updated":
-      case "customer.subscription.deleted": {
+      // --------------------------------------------------------
+      // 🔥 SUBSCRIPTION UPDATED (plan change, renewal, etc.)
+      // --------------------------------------------------------
+      case "customer.subscription.updated": {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
         const priceId = subscription.items?.data?.[0]?.price?.id;
-        const status = subscription.status;
+        const stripeStatus = subscription.status;
 
-        // Update subscription table
+        // Map Stripe status to our status
+        let status: string;
+        if (stripeStatus === "active" || stripeStatus === "trialing") {
+          status = "active";
+        } else if (stripeStatus === "past_due") {
+          status = "past_due";
+        } else {
+          status = "inactive";
+        }
+
+        // Update Prisma
         await prisma.userSubscription.updateMany({
           where: { stripeCustomerId: customerId },
           data: { status, priceId },
         });
 
-        // Update allowed email limits too
+        // Update plan limits
         const allowedEmails = PLAN_LIMITS[priceId ?? ""] ?? 1;
+        const clerkUserId = await getClerkUserIdFromCustomer(customerId);
 
-        await prisma.userSettings.updateMany({
-          where: { clerkUserId: { not: undefined } }, // safe
-          data: {
-            allowedEmails,
-          },
+        if (clerkUserId) {
+          await prisma.userSettings.updateMany({
+            where: { clerkUserId },
+            data: { allowedEmails },
+          });
+
+          // 🔥 UPDATE CLERK METADATA
+          await updateClerkMetadata(clerkUserId, {
+            subscriptionStatus: status,
+          });
+        }
+
+        console.log(`✅ Subscription updated for customer ${customerId}: ${status}`);
+        break;
+      }
+
+      // --------------------------------------------------------
+      // 🔥 SUBSCRIPTION DELETED (canceled or expired)
+      // --------------------------------------------------------
+      case "customer.subscription.deleted": {
+        const subscription = event.data.object as Stripe.Subscription;
+        const customerId = subscription.customer as string;
+
+        // Update Prisma
+        await prisma.userSubscription.updateMany({
+          where: { stripeCustomerId: customerId },
+          data: { status: "inactive" },
         });
 
+        // 🔥 UPDATE CLERK METADATA
+        const clerkUserId = await getClerkUserIdFromCustomer(customerId);
+        if (clerkUserId) {
+          await updateClerkMetadata(clerkUserId, {
+            subscriptionStatus: "inactive",
+          });
+        }
+
+        console.log(`✅ Subscription deleted for customer ${customerId}`);
+        break;
+      }
+
+      // --------------------------------------------------------
+      // 🔥 INVOICE PAYMENT FAILED (card declined, etc.)
+      // --------------------------------------------------------
+      case "invoice.payment_failed": {
+        const invoice = event.data.object as Stripe.Invoice;
+        const customerId = invoice.customer as string;
+
+        // Update to past_due
+        await prisma.userSubscription.updateMany({
+          where: { stripeCustomerId: customerId },
+          data: { status: "past_due" },
+        });
+
+        // 🔥 UPDATE CLERK METADATA
+        const clerkUserId = await getClerkUserIdFromCustomer(customerId);
+        if (clerkUserId) {
+          await updateClerkMetadata(clerkUserId, {
+            subscriptionStatus: "past_due",
+          });
+        }
+
+        console.log(`⚠️ Payment failed for customer ${customerId}`);
         break;
       }
 
