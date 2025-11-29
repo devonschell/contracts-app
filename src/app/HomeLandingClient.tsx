@@ -13,7 +13,6 @@ type Props = {
 export default function HomeLandingClient({ loggedIn, subscribed }: Props) {
   const router = useRouter();
 
-  // ---- Sign In button behavior ----
   const handleSignIn = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
 
@@ -22,7 +21,6 @@ export default function HomeLandingClient({ loggedIn, subscribed }: Props) {
       return;
     }
 
-    // logged in:
     if (subscribed) {
       router.push("/dashboard");
     } else {
@@ -30,7 +28,6 @@ export default function HomeLandingClient({ loggedIn, subscribed }: Props) {
     }
   };
 
-  // ---- "Get Started" button behavior ----
   const handleGetStarted = (e: React.MouseEvent<HTMLAnchorElement>) => {
     e.preventDefault();
 
@@ -39,7 +36,6 @@ export default function HomeLandingClient({ loggedIn, subscribed }: Props) {
       return;
     }
 
-    // logged in:
     if (subscribed) {
       router.push("/dashboard");
     } else {
@@ -49,12 +45,8 @@ export default function HomeLandingClient({ loggedIn, subscribed }: Props) {
 
   return (
     <main className="min-h-screen bg-white text-slate-900 flex flex-col">
-
-      {/* ----- Header ----- */}
       <header className="w-full border-b border-slate-200 bg-white/80 backdrop-blur-md sticky top-0 z-20">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-6 py-2 md:py-3">
-
-          {/* Logo */}
           <Link href="/" className="flex items-center gap-2 no-underline">
             <Image
               src="/brand/oviu-logo.png"
@@ -66,14 +58,12 @@ export default function HomeLandingClient({ loggedIn, subscribed }: Props) {
             />
           </Link>
 
-          {/* Nav */}
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
             <Link href="#features" className="hover:text-[var(--primary)] transition">Features</Link>
             <Link href="#pricing" className="hover:text-[var(--primary)] transition">Pricing</Link>
             <Link href="#contact" className="hover:text-[var(--primary)] transition">Contact</Link>
           </nav>
 
-          {/* Sign In – always SAY "Sign In" */}
           <Link
             href="/login"
             onClick={handleSignIn}
@@ -84,7 +74,6 @@ export default function HomeLandingClient({ loggedIn, subscribed }: Props) {
         </div>
       </header>
 
-      {/* ----- Hero Section ----- */}
       <section className="flex flex-col items-center justify-center text-center px-6 py-20 md:py-28 bg-gradient-to-b from-white to-slate-50">
         <h2 className="text-5xl font-bold leading-tight mb-6 text-slate-900">
           AI-Powered Contract Intelligence
@@ -94,7 +83,6 @@ export default function HomeLandingClient({ loggedIn, subscribed }: Props) {
           OVIU helps your business organize, summarize, and track every contract in one place.
         </p>
 
-        {/* Hero CTA – always SAY "Get Started" */}
         <Link
           href="/signup"
           onClick={handleGetStarted}
@@ -114,8 +102,6 @@ export default function HomeLandingClient({ loggedIn, subscribed }: Props) {
           />
         </div>
       </section>
-
-      {/* rest unchanged... */}
     </main>
   );
 }
