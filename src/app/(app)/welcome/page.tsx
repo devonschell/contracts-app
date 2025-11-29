@@ -167,7 +167,14 @@ export default function WelcomePage() {
         throw new Error(`Notifications error: ${t}`);
       }
 
-      // 3️⃣ Redirect → Upload page
+      // 3️⃣ Mark onboarding step 2 (ready for upload)
+      await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step: 2 }),
+      });
+
+      // 4️⃣ Redirect → Upload page
       router.push("/upload");
     } catch (err: any) {
       console.error(err);
@@ -203,7 +210,7 @@ export default function WelcomePage() {
             className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-sm"
           />
           <p className="text-xs text-muted-foreground">
-            We’ll send receipts and account notices here.
+            We'll send receipts and account notices here.
           </p>
         </div>
 
@@ -272,7 +279,7 @@ export default function WelcomePage() {
             <div>
               <p className="text-sm font-medium">Renewal alerts</p>
               <p className="text-xs text-muted-foreground">
-                We’ll email your recipients before each renewal date.
+                We'll email your recipients before each renewal date.
               </p>
             </div>
           </label>

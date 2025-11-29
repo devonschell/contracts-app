@@ -1,6 +1,7 @@
+// src/app/(app)/upload/page.tsx
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import PageContainer from "@/components/PageContainer";
 
 type QueueItem = {
@@ -15,13 +16,6 @@ type QueueItem = {
 export default function UploadPage() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
-
-  // 🔥 Mark onboarding step 2 when user reaches this page
-  useEffect(() => {
-    fetch("/api/onboarding/mark-upload-seen", { method: "POST" }).catch(() => {
-      // fire-and-forget; no UI impact
-    });
-  }, []);
 
   const onFilesChosen = useCallback((files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -55,6 +49,8 @@ export default function UploadPage() {
     if (queue.length === 0)
       return alert("Choose one or more contract files first.");
 
+    let anySuccess = false;
+
     for (let i = 0; i < queue.length; i++) {
       const item = queue[i];
       if (item.status === "done") continue;
@@ -62,7 +58,7 @@ export default function UploadPage() {
       updateQueue(i, {
         status: "uploading",
         progress: 6,
-        message: `Uploading “${item.file.name}”…`,
+        message: `Uploading "${item.file.name}"…`,
       });
 
       try {
@@ -88,6 +84,7 @@ export default function UploadPage() {
                 message: "Upload complete.",
                 contractId: json.contractId,
               });
+              anySuccess = true;
             } else {
               const reason = json?.error || json?.message || "Unknown error";
               updateQueue(i, {
@@ -121,6 +118,18 @@ export default function UploadPage() {
           message: err?.message || "Upload failed.",
         });
       }
+    }
+
+    // Only mark onboarding complete if at least one upload succeeded
+    if (anySuccess) {
+      // Mark onboarding step 3 (complete)
+      await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step: 3 }),
+      }).catch(() => {
+        // fire-and-forget; don't block navigation
+      });
     }
 
     // After batch completes, send them to Contracts list
