@@ -1,13 +1,13 @@
 // middleware.ts
-import { clerkMiddleware, clerkClient } from "@clerk/nextjs/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 export default clerkMiddleware(async (auth, req) => {
-  const { userId, sessionClaims } = await auth();
+  const { userId } = await auth();
   const url = req.nextUrl;
   const path = url.pathname;
 
-  // ---------- STATIC ASSETS (allow all) ----------
+  // ---------- STATIC ASSETS (always allow) ----------
   const isStatic =
     path.startsWith("/_next") ||
     path.startsWith("/favicon.ico") ||
@@ -25,9 +25,10 @@ export default clerkMiddleware(async (auth, req) => {
   const isBillingPage = path === "/billing" || path.startsWith("/billing");
   const isWelcomePage = path === "/welcome";
   const isUploadPage = path === "/upload";
-  const isDashboard = path === "/dashboard";
 
   const isAPI = path.startsWith("/api/");
+
+  // Public APIs that don't require auth
   const isPublicAPI =
     path.startsWith("/api/stripe/webhook") ||
     path.startsWith("/api/health") ||
@@ -60,24 +61,37 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   // =====================================================
-  // 2) LOGGED-IN USERS → READ CLERK METADATA
+  // 2) LOGGED-IN USERS → CHECK SUBSCRIPTION VIA API
   // =====================================================
 
-  // Get metadata from session claims (set by Clerk)
-  const metadata = sessionClaims?.metadata as {
-    subscriptionStatus?: string;
-    onboardingStep?: number;
-  } | undefined;
+  let isSubscribed = false;
+  let onboardingStep = 0;
 
-  const subscriptionStatus = metadata?.subscriptionStatus ?? "inactive";
-  const onboardingStep = metadata?.onboardingStep ?? 0;
-  const isSubscribed = subscriptionStatus === "active";
+  try {
+    const res = await fetch(`${url.origin}/api/user-status`, {
+      method: "GET",
+      headers: {
+        Cookie: req.headers.get("cookie") || "",
+      },
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      isSubscribed = data.isSubscribed === true;
+      onboardingStep = data.onboardingStep ?? 0;
+    }
+  } catch (err) {
+    console.error("Middleware: Failed to fetch user status", err);
+    // Default to not subscribed if we can't check
+    isSubscribed = false;
+    onboardingStep = 0;
+  }
 
   // =====================================================
   // 2A) LOGGED IN BUT NOT SUBSCRIBED
   // =====================================================
   if (!isSubscribed) {
-    // Allow: billing page, public pages, billing API
+    // Allow: billing page, public pages
     if (isBillingPage || isPublicPage) {
       return NextResponse.next();
     }
@@ -95,7 +109,7 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   // =====================================================
-  // 2B) LOGGED IN + SUBSCRIBED → ONBOARDING CHECK
+  // 2B) LOGGED IN + SUBSCRIBED
   // =====================================================
 
   // Redirect away from public pages (subscribed users go to dashboard)
@@ -106,7 +120,7 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(dashUrl);
   }
 
-  // Redirect away from billing (already subscribed)
+  // Redirect away from billing page (already subscribed)
   if (isBillingPage) {
     const dashUrl = url.clone();
     dashUrl.pathname = "/dashboard";
@@ -114,34 +128,36 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(dashUrl);
   }
 
-  // ---------- ONBOARDING FLOW ----------
-  // Step 0 = not started (shouldn't happen if subscribed, but safety)
+  // =====================================================
+  // 2C) ONBOARDING FLOW (only for subscribed users)
+  // =====================================================
+  // Step 0 = not started (rare edge case)
   // Step 1 = needs to complete /welcome
   // Step 2 = needs to upload first contract
-  // Step 3 = complete, can access everything
+  // Step 3 = complete, full access
 
-  if (onboardingStep === 1) {
-    // Must go to /welcome first
-    if (!isWelcomePage && !isAPI) {
-      const welcomeUrl = url.clone();
-      welcomeUrl.pathname = "/welcome";
-      welcomeUrl.search = "";
-      return NextResponse.redirect(welcomeUrl);
-    }
+  // Allow all API routes for subscribed users (needed for onboarding to work)
+  if (isAPI) {
+    return NextResponse.next();
   }
 
-  if (onboardingStep === 2) {
-    // Must go to /upload after welcome
-    if (!isUploadPage && !isWelcomePage && !isAPI) {
-      const uploadUrl = url.clone();
-      uploadUrl.pathname = "/upload";
-      uploadUrl.search = "";
-      return NextResponse.redirect(uploadUrl);
-    }
+  // Step 1: Must complete /welcome first
+  if (onboardingStep === 1 && !isWelcomePage) {
+    const welcomeUrl = url.clone();
+    welcomeUrl.pathname = "/welcome";
+    welcomeUrl.search = "";
+    return NextResponse.redirect(welcomeUrl);
   }
 
-  // onboardingStep === 3 (or higher) → full access
-  // Allow all app routes
+  // Step 2: Must complete /upload after welcome
+  if (onboardingStep === 2 && !isUploadPage && !isWelcomePage) {
+    const uploadUrl = url.clone();
+    uploadUrl.pathname = "/upload";
+    uploadUrl.search = "";
+    return NextResponse.redirect(uploadUrl);
+  }
+
+  // Step 3+: Full access to everything
   return NextResponse.next();
 });
 
