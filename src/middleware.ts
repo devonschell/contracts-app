@@ -2,6 +2,12 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
+// Dev bypass users - skip all subscription/onboarding checks
+const DEV_BYPASS_USER_IDS = (process.env.DEV_BYPASS_USER_IDS || "")
+  .split(",")
+  .map((id) => id.trim())
+  .filter(Boolean);
+
 export default clerkMiddleware(async (auth, req) => {
   const { userId } = await auth();
   const url = req.nextUrl;
@@ -32,7 +38,8 @@ export default clerkMiddleware(async (auth, req) => {
   const isPublicAPI =
     path.startsWith("/api/stripe/webhook") ||
     path.startsWith("/api/health") ||
-    path.startsWith("/api/billing");
+    path.startsWith("/api/billing") ||
+    path.startsWith("/api/user-status");
 
   const isPublicPage = isRoot || isAuthRoute;
 
@@ -61,6 +68,23 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   // =====================================================
+  // 🔥 DEV BYPASS - Skip all checks for bypass users
+  // =====================================================
+  const isBypassUser = DEV_BYPASS_USER_IDS.includes(userId);
+
+  if (isBypassUser) {
+    // Bypass users should go straight to dashboard from public pages
+    if (isPublicPage || isBillingPage) {
+      const dashUrl = url.clone();
+      dashUrl.pathname = "/dashboard";
+      dashUrl.search = "";
+      return NextResponse.redirect(dashUrl);
+    }
+    // Allow everything else
+    return NextResponse.next();
+  }
+
+  // =====================================================
   // 2) LOGGED-IN USERS → CHECK SUBSCRIPTION VIA API
   // =====================================================
 
@@ -82,7 +106,6 @@ export default clerkMiddleware(async (auth, req) => {
     }
   } catch (err) {
     console.error("Middleware: Failed to fetch user status", err);
-    // Default to not subscribed if we can't check
     isSubscribed = false;
     onboardingStep = 0;
   }
@@ -131,12 +154,8 @@ export default clerkMiddleware(async (auth, req) => {
   // =====================================================
   // 2C) ONBOARDING FLOW (only for subscribed users)
   // =====================================================
-  // Step 0 = not started (rare edge case)
-  // Step 1 = needs to complete /welcome
-  // Step 2 = needs to upload first contract
-  // Step 3 = complete, full access
 
-  // Allow all API routes for subscribed users (needed for onboarding to work)
+  // Allow all API routes for subscribed users
   if (isAPI) {
     return NextResponse.next();
   }
@@ -163,7 +182,6 @@ export default clerkMiddleware(async (auth, req) => {
 
 export const config = {
   matcher: [
-    // Match all routes except static files
     "/((?!_next|.*\\..*).*)",
     "/(api)(.*)",
   ],

@@ -14,7 +14,6 @@ export async function GET() {
   }
 
   try {
-    // Fetch subscription and settings in parallel
     const [subscription, settings] = await Promise.all([
       prisma.userSubscription.findUnique({
         where: { clerkUserId: userId },
