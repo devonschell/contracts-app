@@ -2,7 +2,7 @@
 "use client";
 
 import { SignIn, SignedIn, SignedOut } from "@clerk/nextjs";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
@@ -10,7 +10,12 @@ export default function LoginPage() {
     <div className="h-screen grid place-items-center bg-background text-foreground">
       {/* LOGGED OUT → show Clerk SignIn */}
       <SignedOut>
-        <SignIn routing="path" path="/login" />
+        <SignIn 
+          routing="path" 
+          path="/login"
+          forceRedirectUrl="/login"
+          signUpForceRedirectUrl="/login"
+        />
       </SignedOut>
 
       {/* LOGGED IN → immediately redirect based on subscription */}
@@ -23,24 +28,46 @@ export default function LoginPage() {
 
 function RedirectWhenSignedIn() {
   const router = useRouter();
+  const [status, setStatus] = useState("Checking your account…");
 
   useEffect(() => {
     const run = async () => {
       try {
-        const res = await fetch("/api/billing", { method: "GET" });
+        // Check subscription and onboarding status
+        const res = await fetch("/api/user-status", { method: "GET" });
+
         if (res.ok) {
           const data = await res.json();
-          if (data?.subscribed) {
-            router.replace("/dashboard");
-          } else {
+          const isSubscribed = data.isSubscribed === true;
+          const onboardingStep = data.onboardingStep ?? 0;
+
+          if (!isSubscribed) {
+            // Not paid → billing
+            setStatus("Redirecting to billing…");
             router.replace("/billing");
+          } else if (onboardingStep < 3) {
+            // Paid but onboarding incomplete
+            if (onboardingStep <= 1) {
+              setStatus("Redirecting to setup…");
+              router.replace("/welcome");
+            } else {
+              setStatus("Redirecting to upload…");
+              router.replace("/upload");
+            }
+          } else {
+            // Paid + onboarding complete → dashboard
+            setStatus("Redirecting to dashboard…");
+            router.replace("/dashboard");
           }
         } else {
-          // fallback: just go to dashboard
-          router.replace("/dashboard");
+          // API error → default to billing (safe fallback)
+          setStatus("Redirecting to billing…");
+          router.replace("/billing");
         }
       } catch {
-        router.replace("/dashboard");
+        // Network error → default to billing
+        setStatus("Redirecting to billing…");
+        router.replace("/billing");
       }
     };
 
@@ -49,7 +76,10 @@ function RedirectWhenSignedIn() {
 
   return (
     <div className="h-screen grid place-items-center">
-      <p>Redirecting…</p>
+      <div className="text-center">
+        <div className="mb-4 h-8 w-8 mx-auto animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+        <p className="text-sm text-muted-foreground">{status}</p>
+      </div>
     </div>
   );
 }
