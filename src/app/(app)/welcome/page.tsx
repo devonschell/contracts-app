@@ -265,9 +265,9 @@ export default function WelcomePage() {
           </form>
         </div>
 
-        {/* TOGGLES */}
+        {/* TOGGLES WITH TOOLTIPS */}
         <div className="grid gap-4 sm:grid-cols-2 pt-3">
-          <label className="flex items-start gap-3">
+          <label className="flex items-start gap-3 group relative">
             <input
               type="checkbox"
               className="mt-1 h-4 w-4"
@@ -277,14 +277,28 @@ export default function WelcomePage() {
               }
             />
             <div>
-              <p className="text-sm font-medium">Renewal alerts</p>
+              <p className="text-sm font-medium flex items-center gap-1">
+                Renewal alerts
+                <span className="relative inline-block">
+                  <span className="cursor-help text-muted-foreground hover:text-foreground">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                      <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                  </span>
+                  <span className="invisible group-hover:visible absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-48 p-2 bg-foreground text-background text-xs rounded shadow-lg z-10">
+                    Get notified 90, 60, and 30 days before a contract renews so you never miss a cancellation window.
+                  </span>
+                </span>
+              </p>
               <p className="text-xs text-muted-foreground">
                 We'll email your recipients before each renewal date.
               </p>
             </div>
           </label>
 
-          <label className="flex items-start gap-3">
+          <label className="flex items-start gap-3 group relative">
             <input
               type="checkbox"
               className="mt-1 h-4 w-4"
@@ -294,7 +308,21 @@ export default function WelcomePage() {
               }
             />
             <div>
-              <p className="text-sm font-medium">Weekly digest</p>
+              <p className="text-sm font-medium flex items-center gap-1">
+                Weekly digest
+                <span className="relative inline-block">
+                  <span className="cursor-help text-muted-foreground hover:text-foreground">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                      <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                  </span>
+                  <span className="invisible group-hover:visible absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-48 p-2 bg-foreground text-background text-xs rounded shadow-lg z-10">
+                    Every Monday, receive a summary of all your contracts, upcoming renewals, and recent activity.
+                  </span>
+                </span>
+              </p>
               <p className="text-xs text-muted-foreground">
                 Weekly summary of contracts and renewals.
               </p>

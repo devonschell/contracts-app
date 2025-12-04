@@ -52,15 +52,12 @@ export default clerkMiddleware(async (auth, req) => {
   // 1) LOGGED-OUT USERS
   // =====================================================
   if (!userId) {
-    // Allow: landing, login, signup
     if (isPublicPage) return NextResponse.next();
 
-    // Block API routes with 401
     if (isAPI) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized" },{ status: 401 });
     }
 
-    // Everything else → redirect to /login
     const loginUrl = url.clone();
     loginUrl.pathname = "/login";
     loginUrl.search = "";
@@ -73,14 +70,12 @@ export default clerkMiddleware(async (auth, req) => {
   const isBypassUser = DEV_BYPASS_USER_IDS.includes(userId);
 
   if (isBypassUser) {
-    // Bypass users should go straight to dashboard from public pages
     if (isPublicPage || isBillingPage) {
       const dashUrl = url.clone();
       dashUrl.pathname = "/dashboard";
       dashUrl.search = "";
       return NextResponse.redirect(dashUrl);
     }
-    // Allow everything else
     return NextResponse.next();
   }
 
@@ -114,17 +109,14 @@ export default clerkMiddleware(async (auth, req) => {
   // 2A) LOGGED IN BUT NOT SUBSCRIBED
   // =====================================================
   if (!isSubscribed) {
-    // Allow: billing page, public pages
     if (isBillingPage || isPublicPage) {
       return NextResponse.next();
     }
 
-    // Block other APIs with 402 Payment Required
     if (isAPI) {
-      return NextResponse.json({ error: "Payment required" }, { status: 402 });
+      return NextResponse.json({ error: "Payment required" },{ status: 402 });
     }
 
-    // Everything else → redirect to /billing
     const billingUrl = url.clone();
     billingUrl.pathname = "/billing";
     billingUrl.search = "";
@@ -135,7 +127,7 @@ export default clerkMiddleware(async (auth, req) => {
   // 2B) LOGGED IN + SUBSCRIBED
   // =====================================================
 
-  // Redirect away from public pages (subscribed users go to dashboard)
+  // Redirect away from public pages
   if (isPublicPage) {
     const dashUrl = url.clone();
     dashUrl.pathname = "/dashboard";
@@ -143,7 +135,7 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(dashUrl);
   }
 
-  // Redirect away from billing page (already subscribed)
+  // Redirect away from billing page
   if (isBillingPage) {
     const dashUrl = url.clone();
     dashUrl.pathname = "/dashboard";
@@ -151,16 +143,18 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(dashUrl);
   }
 
-  // =====================================================
-  // 2C) ONBOARDING FLOW (only for subscribed users)
-  // =====================================================
-
   // Allow all API routes for subscribed users
   if (isAPI) {
     return NextResponse.next();
   }
 
-  // Step 1: Must complete /welcome first
+  // =====================================================
+  // 2C) ONBOARDING FLOW
+  // =====================================================
+  // Step 1: Must complete /welcome first (strict)
+  // Step 2: We bring them to /upload but allow free navigation
+  // Step 3+: Full access
+
   if (onboardingStep === 1 && !isWelcomePage) {
     const welcomeUrl = url.clone();
     welcomeUrl.pathname = "/welcome";
@@ -168,15 +162,10 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(welcomeUrl);
   }
 
-  // Step 2: Must complete /upload after welcome
-  if (onboardingStep === 2 && !isUploadPage && !isWelcomePage) {
-    const uploadUrl = url.clone();
-    uploadUrl.pathname = "/upload";
-    uploadUrl.search = "";
-    return NextResponse.redirect(uploadUrl);
-  }
+  // Step 2: Allow free navigation - they can explore the app
+  // The upload page is just a suggestion, not a requirement
 
-  // Step 3+: Full access to everything
+  // Step 3+: Full access
   return NextResponse.next();
 });
 
