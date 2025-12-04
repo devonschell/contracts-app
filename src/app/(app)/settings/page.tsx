@@ -4,13 +4,6 @@ import { useState, useEffect } from "react";
 import { useUser } from "@clerk/nextjs";
 import PageContainer from "@/components/PageContainer";
 
-// STRIPE PLANS SHARED FROM BILLING PAGE --------------------
-const plans = [
-  { name: "Starter", priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_STARTER!, price: "$39/mo" },
-  { name: "Growth", priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_GROWTH!, price: "$99/mo" },
-  { name: "Pro", priceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_PRO!, price: "$249/mo" },
-];
-
 type NotificationPrefs = {
   recipientsCsv: string;
   renewalAlerts: boolean;
@@ -26,10 +19,14 @@ type CompanyProfile = {
 
 export default function SettingsPage() {
   const { user } = useUser();
-  const [activeTab, setActiveTab] = useState<"profile" | "notifications" | "billing">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "notifications" | "billing">(
+    "profile"
+  );
   const [saving, setSaving] = useState(false);
   const [loadingBilling, setLoadingBilling] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(
+    null
+  );
 
   // Profile state ------------------------------------------
   const [profile, setProfile] = useState<CompanyProfile>({
@@ -51,28 +48,28 @@ export default function SettingsPage() {
 
   // Load data on mount -------------------------------------
   useEffect(() => {
-    // Load company profile
     fetch("/api/settings/company")
       .then((r) => r.json())
       .then((data) => {
         if (data?.data) {
           setProfile({
             companyName: data.data.companyName || "",
-            billingEmail: data.data.billingEmail || user?.primaryEmailAddress?.emailAddress || "",
-            timezone: data.data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+            billingEmail:
+              data.data.billingEmail || user?.primaryEmailAddress?.emailAddress || "",
+            timezone:
+              data.data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
           });
         }
       })
       .catch(console.error);
 
-    // Load notifications
     fetch("/api/settings/notifications")
       .then((r) => r.json())
       .then((data) => {
         if (data?.data) {
           setNotifications(data.data);
           const existingEmails = data.data.recipientsCsv
-            ? data.data.recipientsCsv.split(",").map((e: string) => e.trim()).filter(Boolean)
+            ? data.data.recipientsCsv.split(",").map((e: string) => e.trim())
             : [];
           setEmails(existingEmails);
         }
@@ -92,7 +89,7 @@ export default function SettingsPage() {
       });
       if (!res.ok) throw new Error("Failed to save");
       setMessage({ type: "success", text: "Profile saved!" });
-    } catch (err) {
+    } catch {
       setMessage({ type: "error", text: "Failed to save profile" });
     } finally {
       setSaving(false);
@@ -114,21 +111,21 @@ export default function SettingsPage() {
       });
       if (!res.ok) throw new Error("Failed to save");
       setMessage({ type: "success", text: "Notification settings saved!" });
-    } catch (err) {
+    } catch {
       setMessage({ type: "error", text: "Failed to save notifications" });
     } finally {
       setSaving(false);
     }
   }
 
-  // Billing actions (checkout + portal) ---------------------
-  async function handleBillingAction(action: "checkout" | "portal", priceId?: string) {
+  // Billing Portal Handler ---------------------------------
+  async function handleBillingAction() {
     setLoadingBilling(true);
 
     const res = await fetch("/api/billing", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action, priceId }),
+      body: JSON.stringify({ action: "portal" }),
     });
 
     const data = await res.json();
@@ -137,7 +134,7 @@ export default function SettingsPage() {
     if (data.url) window.location.href = data.url;
   }
 
-  // Add recipient email ------------------------------------
+  // Email Add / Remove -------------------------------------
   function handleAddEmail() {
     const raw = emailInput.trim();
     if (!raw || !raw.includes("@") || emails.includes(raw)) return;
@@ -158,7 +155,6 @@ export default function SettingsPage() {
 
   return (
     <PageContainer title="Settings" description="Manage your OVIU account and preferences.">
-      
       {/* TAB SELECTOR ---------------------------------------- */}
       <div className="border-b border-border mb-6">
         <nav className="flex gap-6">
@@ -218,9 +214,7 @@ export default function SettingsPage() {
                 onChange={(e) => setProfile({ ...profile, billingEmail: e.target.value })}
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
               />
-              <p className="text-xs text-muted-foreground">
-                Receipts and billing notices will be sent here.
-              </p>
+              <p className="text-xs text-muted-foreground">Receipts and billing notices will be sent here.</p>
             </div>
 
             <div className="space-y-2">
@@ -366,39 +360,15 @@ export default function SettingsPage() {
 
       {/* BILLING TAB ----------------------------------------- */}
       {activeTab === "billing" && (
-        <div className="max-w-2xl space-y-6">
+        <div className="max-w-xl space-y-6">
           <div className="rounded-xl border border-border bg-card p-6 space-y-4">
-            <h2 className="text-lg font-semibold">Subscription Plans</h2>
+            <h2 className="text-lg font-semibold">Subscription</h2>
             <p className="text-sm text-muted-foreground">
-              Choose a plan or manage your existing subscription.
+              Manage your subscription, payment methods, invoices, and plan upgrades.
             </p>
 
-            {/* Plans Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-              {plans.map((p) => (
-                <div
-                  key={p.name}
-                  className="rounded-xl border border-border bg-background p-5 flex flex-col justify-between shadow-sm"
-                >
-                  <div>
-                    <h3 className="text-lg font-semibold">{p.name}</h3>
-                    <p className="text-muted-foreground">{p.price}</p>
-                  </div>
-
-                  <button
-                    disabled={loadingBilling}
-                    onClick={() => handleBillingAction("checkout", p.priceId)}
-                    className="mt-4 rounded-lg bg-primary text-white py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-60"
-                  >
-                    {loadingBilling ? "Loading…" : "Choose Plan"}
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            {/* Billing Portal Button */}
             <button
-              onClick={() => handleBillingAction("portal")}
+              onClick={handleBillingAction}
               disabled={loadingBilling}
               className="w-full rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted transition"
             >
