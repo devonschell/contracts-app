@@ -15,7 +15,7 @@ function getBaseUrl() {
   return "http://localhost:3002";
 }
 
-// ---------- GET /api/billing  ----------
+// ---------- GET /api/billing ----------
 // Returns { subscribed: boolean } for the current user
 export async function GET(req: Request) {
   try {
@@ -63,7 +63,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ subscribed: hasActive });
   } catch (err: any) {
     console.error("Stripe billing GET error:", err);
-    // On error, be safe and treat as not subscribed
     return NextResponse.json(
       { subscribed: false, error: err.message ?? "Billing check failed" },
       { status: 200 }
@@ -71,7 +70,7 @@ export async function GET(req: Request) {
   }
 }
 
-// ---------- POST /api/billing  ----------
+// ---------- POST /api/billing ----------
 // { action: "checkout" | "portal", priceId?: string }
 export async function POST(req: Request) {
   try {
@@ -116,9 +115,9 @@ export async function POST(req: Request) {
             quantity: 1,
           },
         ],
-        // ✅ After successful checkout, go to onboarding (welcome)
+        // After successful checkout → onboarding/welcome
         success_url: `${baseUrl}/welcome?checkout=success`,
-        // ✅ On cancel, go back to the billing paywall
+        // If user cancels checkout → billing page
         cancel_url: `${baseUrl}/billing?checkout=canceled`,
         subscription_data: {
           metadata: { clerkUserId: userId, email },
@@ -128,12 +127,12 @@ export async function POST(req: Request) {
       return NextResponse.json({ url: session.url });
     }
 
-    // ----- Open billing portal (for existing subscribers) -----
+    // ----- Open billing portal -----
     if (action === "portal") {
       const portal = await stripe.billingPortal.sessions.create({
         customer: customer.id,
-        // Send them back into app billing/settings after managing subscription
-        return_url: `${baseUrl}/settings/billing`,
+        // FIX: Return to /settings (NOT /settings/billing)
+        return_url: `${baseUrl}/settings`,
       });
 
       return NextResponse.json({ url: portal.url });

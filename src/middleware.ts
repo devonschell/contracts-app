@@ -28,7 +28,12 @@ export default clerkMiddleware(async (auth, req) => {
   );
 
   const isRoot = path === "/";
-  const isBillingPage = path === "/billing" || path.startsWith("/billing");
+  const isBillingPage =
+  path === "/billing" ||
+  path.startsWith("/billing") ||
+  path === "/settings/billing" ||
+  path.startsWith("/settings/billing");
+
   const isWelcomePage = path === "/welcome";
   const isUploadPage = path === "/upload";
 
